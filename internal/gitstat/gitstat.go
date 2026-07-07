@@ -1,0 +1,157 @@
+package gitstat
+
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
+	"strings"
+)
+
+type Stat struct {
+	Path      string
+	Name      string
+	Head      string
+	Base      string
+	Added     int
+	Removed   int
+	Files     int
+	Fetched   bool
+	FetchNote string
+}
+
+func Collect(ctx context.Context, folders []string) ([]Stat, error) {
+	stats := make([]Stat, 0, len(folders))
+	for _, folder := range folders {
+		stat, err := CollectOne(ctx, folder)
+		if err != nil {
+			return nil, err
+		}
+		stats = append(stats, stat)
+	}
+	return stats, nil
+}
+
+func CollectOne(ctx context.Context, folder string) (Stat, error) {
+	if strings.TrimSpace(folder) == "" {
+		return Stat{}, errors.New("folder cannot be empty")
+	}
+
+	clean := filepath.Clean(folder)
+	info, err := os.Stat(clean)
+	if err != nil {
+		return Stat{}, fmt.Errorf("%s: %w", clean, err)
+	}
+	if !info.IsDir() {
+		return Stat{}, fmt.Errorf("%s: not a directory", clean)
+	}
+
+	if err := run(ctx, clean, "rev-parse", "--is-inside-work-tree"); err != nil {
+		return Stat{}, fmt.Errorf("%s: not a git repository", clean)
+	}
+
+	fetchNote := ""
+	fetched := true
+	if err := run(ctx, clean, "fetch", "--quiet", "origin"); err != nil {
+		fetched = false
+		fetchNote = "fetch failed; using local refs"
+	}
+
+	base := defaultBranch(ctx, clean)
+	head := output(ctx, clean, "rev-parse", "--abbrev-ref", "HEAD")
+	if head == "" {
+		head = "HEAD"
+	}
+
+	added, removed, files, err := diffNumstat(ctx, clean, base)
+	if err != nil {
+		return Stat{}, fmt.Errorf("%s: diff against %s failed: %w", clean, base, err)
+	}
+
+	return Stat{
+		Path:      clean,
+		Name:      filepath.Base(clean),
+		Head:      head,
+		Base:      base,
+		Added:     added,
+		Removed:   removed,
+		Files:     files,
+		Fetched:   fetched,
+		FetchNote: fetchNote,
+	}, nil
+}
+
+func defaultBranch(ctx context.Context, dir string) string {
+	if ref := output(ctx, dir, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"); ref != "" {
+		return ref
+	}
+
+	if branch := output(ctx, dir, "remote", "show", "-n", "origin"); branch != "" {
+		for _, line := range strings.Split(branch, "\n") {
+			line = strings.TrimSpace(line)
+			if strings.HasPrefix(line, "HEAD branch:") {
+				name := strings.TrimSpace(strings.TrimPrefix(line, "HEAD branch:"))
+				if name != "" && name != "(unknown)" {
+					return "origin/" + name
+				}
+			}
+		}
+	}
+
+	return "origin/main"
+}
+
+func diffNumstat(ctx context.Context, dir, base string) (int, int, int, error) {
+	raw, err := outputErr(ctx, dir, "diff", "--numstat", base+"...HEAD")
+	if err != nil {
+		return 0, 0, 0, err
+	}
+
+	var added, removed, files int
+	scanner := bufio.NewScanner(bytes.NewReader(raw))
+	for scanner.Scan() {
+		fields := strings.Fields(scanner.Text())
+		if len(fields) < 3 {
+			continue
+		}
+
+		a, aErr := strconv.Atoi(fields[0])
+		r, rErr := strconv.Atoi(fields[1])
+		if aErr == nil {
+			added += a
+		}
+		if rErr == nil {
+			removed += r
+		}
+		files++
+	}
+	if err := scanner.Err(); err != nil {
+		return 0, 0, 0, err
+	}
+
+	return added, removed, files, nil
+}
+
+func run(ctx context.Context, dir string, args ...string) error {
+	_, err := outputErr(ctx, dir, args...)
+	return err
+}
+
+func output(ctx context.Context, dir string, args ...string) string {
+	raw, err := outputErr(ctx, dir, args...)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(raw))
+}
+
+func outputErr(ctx context.Context, dir string, args ...string) ([]byte, error) {
+	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.Dir = dir
+	return cmd.CombinedOutput()
+}

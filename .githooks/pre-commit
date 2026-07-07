@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+set -eu
+
+scripts/format.sh
+exec scripts/check.sh
