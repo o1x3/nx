@@ -11,7 +11,10 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 )
+
+const defaultCollectParallelism = 8
 
 type Stat struct {
 	Path      string
@@ -26,15 +29,76 @@ type Stat struct {
 }
 
 func Collect(ctx context.Context, folders []string) ([]Stat, error) {
-	stats := make([]Stat, 0, len(folders))
-	for _, folder := range folders {
-		stat, err := CollectOne(ctx, folder)
-		if err != nil {
-			return nil, err
-		}
-		stats = append(stats, stat)
+	if len(folders) == 0 {
+		return nil, nil
 	}
+
+	stats := make([]Stat, len(folders))
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	jobs := make(chan int)
+	errs := make(chan error, 1)
+	var wg sync.WaitGroup
+
+	for range collectParallelism(len(folders)) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for idx := range jobs {
+				stat, err := CollectOne(ctx, folders[idx])
+				if err != nil {
+					select {
+					case errs <- err:
+						cancel()
+					default:
+					}
+					continue
+				}
+				stats[idx] = stat
+			}
+		}()
+	}
+
+sendJobs:
+	for idx := range folders {
+		select {
+		case <-ctx.Done():
+			break sendJobs
+		case jobs <- idx:
+		}
+	}
+	close(jobs)
+	wg.Wait()
+
+	select {
+	case err := <-errs:
+		return nil, err
+	default:
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	return stats, nil
+}
+
+func collectParallelism(folderCount int) int {
+	if folderCount < 1 {
+		return 0
+	}
+
+	parallelism := defaultCollectParallelism
+	if raw := strings.TrimSpace(os.Getenv("NX_GIT_STAT_JOBS")); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
+			parallelism = parsed
+		}
+	}
+
+	if parallelism > folderCount {
+		return folderCount
+	}
+	return parallelism
 }
 
 func CollectOne(ctx context.Context, folder string) (Stat, error) {
@@ -55,14 +119,14 @@ func CollectOne(ctx context.Context, folder string) (Stat, error) {
 		return Stat{}, fmt.Errorf("%s: not a git repository", clean)
 	}
 
+	base := defaultBranch(ctx, clean)
 	fetchNote := ""
 	fetched := true
-	if err := run(ctx, clean, "fetch", "--quiet", "origin"); err != nil {
+	if err := fetchBase(ctx, clean, base); err != nil {
 		fetched = false
 		fetchNote = "fetch failed; using local refs"
 	}
 
-	base := defaultBranch(ctx, clean)
 	head := output(ctx, clean, "rev-parse", "--abbrev-ref", "HEAD")
 	if head == "" {
 		head = "HEAD"
@@ -106,8 +170,18 @@ func defaultBranch(ctx context.Context, dir string) string {
 	return "origin/main"
 }
 
+func fetchBase(ctx context.Context, dir, base string) error {
+	remote, branch, ok := strings.Cut(base, "/")
+	if !ok || remote == "" || branch == "" {
+		return run(ctx, dir, "fetch", "--quiet", "--no-tags", "origin")
+	}
+
+	refspec := fmt.Sprintf("+refs/heads/%s:refs/remotes/%s/%s", branch, remote, branch)
+	return run(ctx, dir, "fetch", "--quiet", "--no-tags", remote, refspec)
+}
+
 func diffNumstat(ctx context.Context, dir, base string) (int, int, int, error) {
-	raw, err := outputErr(ctx, dir, "diff", "--numstat", base+"...HEAD")
+	raw, err := outputErr(ctx, dir, "diff", "--no-ext-diff", "--numstat", base+"...HEAD")
 	if err != nil {
 		return 0, 0, 0, err
 	}

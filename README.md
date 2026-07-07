@@ -31,9 +31,10 @@ nx git stat gigauser gigauser-backend-prod the-exchange
 What it does:
 
 - Treats each folder as a path relative to your current directory.
-- Fetches `origin`.
+- Fetches the detected `origin` default branch.
 - Auto-detects the remote default branch from `origin/HEAD`.
 - Falls back to `origin/main` if default branch detection is unavailable.
+- Checks multiple folders concurrently; set `NX_GIT_STAT_JOBS=<n>` to tune concurrency.
 - Prints changed files, added lines, and removed lines for `<base>...HEAD`.
 
 ## Updates

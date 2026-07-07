@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.3
+
+- Improved `nx git stat` performance by fetching only the detected default branch instead of all `origin` refs.
+- Improved multi-folder `nx git stat` collection with I/O-oriented concurrency and an `NX_GIT_STAT_JOBS` override while preserving output order.
+
 ## 0.0.2
 
 - Added the initial extensible `nx` Go CLI foundation.
