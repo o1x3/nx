@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.3
+
+- Improved `nx git stat` performance by fetching only the detected default branch instead of all `origin` refs.
+- Improved multi-folder `nx git stat` collection with concurrent folder checks while preserving input order.
+- Added `nx git stat --jobs <n>` to tune multi-folder collection concurrency.
+
 ## 0.0.2
 
 - Added the initial extensible `nx` Go CLI foundation.

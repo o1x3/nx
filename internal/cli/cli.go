@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
 	"github.com/o1x3/nx/internal/gitstat"
@@ -54,11 +55,12 @@ func (a App) runGit(ctx context.Context, args []string, stdout io.Writer) error 
 		fmt.Fprint(stdout, gitHelpText())
 		return nil
 	case "stat", "stats":
-		if len(args) == 1 {
-			return fmt.Errorf("usage: nx git stat <folder> [folder...]")
+		opts, folders, err := parseGitStatArgs(args[1:])
+		if err != nil {
+			return err
 		}
 
-		stats, err := gitstat.Collect(ctx, args[1:])
+		stats, err := gitstat.Collect(ctx, folders, opts)
 		if err != nil {
 			return err
 		}
@@ -70,6 +72,54 @@ func (a App) runGit(ctx context.Context, args []string, stdout io.Writer) error 
 	}
 }
 
+func parseGitStatArgs(args []string) (gitstat.CollectOptions, []string, error) {
+	var opts gitstat.CollectOptions
+	var folders []string
+	parseOptions := true
+
+	for idx := 0; idx < len(args); idx++ {
+		arg := args[idx]
+		switch {
+		case parseOptions && arg == "--":
+			parseOptions = false
+		case parseOptions && arg == "--jobs":
+			idx++
+			if idx >= len(args) {
+				return gitstat.CollectOptions{}, nil, fmt.Errorf("--jobs requires a value")
+			}
+			jobs, err := parsePositiveInt(args[idx], "--jobs")
+			if err != nil {
+				return gitstat.CollectOptions{}, nil, err
+			}
+			opts.Jobs = jobs
+		case parseOptions && strings.HasPrefix(arg, "--jobs="):
+			jobs, err := parsePositiveInt(strings.TrimPrefix(arg, "--jobs="), "--jobs")
+			if err != nil {
+				return gitstat.CollectOptions{}, nil, err
+			}
+			opts.Jobs = jobs
+		case parseOptions && strings.HasPrefix(arg, "-"):
+			return gitstat.CollectOptions{}, nil, fmt.Errorf("unknown option %q", arg)
+		default:
+			folders = append(folders, arg)
+		}
+	}
+
+	if len(folders) == 0 {
+		return gitstat.CollectOptions{}, nil, fmt.Errorf("usage: nx git stat [--jobs <n>] <folder> [folder...]")
+	}
+
+	return opts, folders, nil
+}
+
+func parsePositiveInt(raw, name string) (int, error) {
+	parsed, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil || parsed < 1 {
+		return 0, fmt.Errorf("%s must be a positive integer", name)
+	}
+	return parsed, nil
+}
+
 func helpText() string {
 	return `nx is a personal development CLI.
 
@@ -77,7 +127,7 @@ Usage:
   nx <command> [args]
 
 Commands:
-  git stat <folder> [folder...]   Show branch diff stats against the repo default branch
+  git stat [--jobs <n>] <folder> [folder...]   Show branch diff stats against the repo default branch
   version                         Show build version
   help                            Show help
 
@@ -86,7 +136,7 @@ Commands:
 
 func gitHelpText() string {
 	return `Usage:
-  nx git stat <folder> [folder...]
+  nx git stat [--jobs <n>] <folder> [folder...]
 
 `
 }
