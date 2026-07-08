@@ -161,6 +161,27 @@ exit 1
 	}
 }
 
+func TestValidRemoteHeadBranchRejectsGitPlaceholders(t *testing.T) {
+	tests := []struct {
+		name string
+		want bool
+	}{
+		{name: "main", want: true},
+		{name: "trunk", want: true},
+		{name: "", want: false},
+		{name: "(unknown)", want: false},
+		{name: "(not queried)", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := validRemoteHeadBranch(tt.name); got != tt.want {
+				t.Fatalf("validRemoteHeadBranch(%q) = %t, want %t", tt.name, got, tt.want)
+			}
+		})
+	}
+}
+
 func git(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	cmd := exec.Command("git", args...)

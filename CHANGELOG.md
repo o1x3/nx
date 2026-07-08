@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.4
+
+- Fixed `nx git stat` default-branch fallback when `git remote show -n origin` reports `HEAD branch: (not queried)`.
+
 ## 0.0.3
 
 - Improved `nx git stat` performance by fetching only the detected default branch instead of all `origin` refs.

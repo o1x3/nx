@@ -135,7 +135,7 @@ func defaultBranch(ctx context.Context, dir string) string {
 			line = strings.TrimSpace(line)
 			if strings.HasPrefix(line, "HEAD branch:") {
 				name := strings.TrimSpace(strings.TrimPrefix(line, "HEAD branch:"))
-				if name != "" && name != "(unknown)" {
+				if validRemoteHeadBranch(name) {
 					return "origin/" + name
 				}
 			}
@@ -143,6 +143,10 @@ func defaultBranch(ctx context.Context, dir string) string {
 	}
 
 	return "origin/main"
+}
+
+func validRemoteHeadBranch(name string) bool {
+	return name != "" && name != "(unknown)" && name != "(not queried)"
 }
 
 func fetchBase(ctx context.Context, dir, base string) error {
