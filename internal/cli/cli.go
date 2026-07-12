@@ -40,6 +40,8 @@ func (a App) Run(ctx context.Context, args []string, stdout, stderr io.Writer) e
 		return nil
 	case "git":
 		return a.runGit(ctx, args[1:], stdout)
+	case "token", "tokens":
+		return a.runToken(ctx, args[1:], stdout)
 	default:
 		return fmt.Errorf("unknown command %q\n\n%s", args[0], strings.TrimSpace(helpText()))
 	}
@@ -128,6 +130,7 @@ Usage:
 
 Commands:
   git stat [--jobs <n>] <folder> [folder...]   Show branch diff stats against the repo default branch
+  token [harness] [range] [view]  Token stats across AI coding harnesses (see nx token --help)
   version                         Show build version
   help                            Show help
 

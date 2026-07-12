@@ -37,6 +37,49 @@ What it does:
 - Checks multiple folders concurrently; set `--jobs <n>` to tune concurrency.
 - Prints changed files, added lines, and removed lines for `<base>...HEAD`.
 
+```sh
+nx token [harness] [range] [view] [-i]
+nx token [harness] [range] (json | quiet | compare)
+```
+
+A pastel terminal dashboard for your AI coding-harness token usage (alias: `nx tokens`). All arguments are positional and order-independent.
+
+- Harness (default `all`): `claude` (`cc`, `claude-code`), `codex` (`cx`), `pi` (`pi.dev`, `pidev`), `cursor` (`cursor-ide`, `cursor-cli`, `cursor-agent`), `all` (`combined`, `everything`).
+- Range (default all-time): `alltime` (`lifetime`), `30d` (`month`, `30`), `7d` (`week`, `7`).
+- View (default `overview`): `overview`, `models`, `hours`, `punchcard`, `trend`, `topdays`, `weekday`, `cost`, `mix`.
+- Output modes (bypass the card): `json` (NDJSON for `all`), `quiet` (`-q`, one prompt-safe line), `compare` (`vs`, side by side).
+- Flags: `-i`/`--tui` interactive mode, `-h`/`--help`.
+
+Examples:
+
+```sh
+nx token                    # combined card, all harnesses, all time
+nx token codex 7d cost      # Codex spend, last 7 days
+nx token claude punchcard   # Claude Code weekday × hour grid
+nx token all json | jq -s   # NDJSON summary, one object per harness
+nx token -i                 # interactive: ←/→ harness · tab/⇧tab views · 1/2/3 range · q quit
+```
+
+Data sources:
+
+| Harness | Source | Tokens |
+| --- | --- | --- |
+| Claude Code | `~/.claude/projects/*/*.jsonl` | real |
+| Codex | `~/.codex/sessions/**/rollout-*.jsonl` | real |
+| pi.dev | `~/.pi/agent/sessions/*/*.jsonl` | real |
+| Cursor (IDE + CLI) | `<config>/Cursor/User/globalStorage/state.vscdb` + `~/.cursor/chats/*/*/store.db` | estimated from transcript size (~4 bytes/token) |
+
+Cursor does not store real token counts locally, so its figures are estimates. `<config>` is `~/Library/Application Support` on macOS and `~/.config` on Linux.
+
+Environment:
+
+- `NX_BACKGROUND=light|dark` overrides terminal background detection.
+- `NX_TRUECOLOR=1` forces 24-bit colour (useful for capture tools). Piped output is plain text.
+
+Exit codes: `0` ok · `2` bad arguments · `3` no usage for the selection (output modes only, so it composes in scripts and CI).
+
+Interactive keys: `←`/`→` switch harness, `tab`/`⇧tab` cycle views, `1`/`2`/`3` set the range, `q` quits.
+
 ## Updates
 
 Released builds check GitHub for the latest release at most once per day. If a newer release exists for your OS and CPU, `nx` downloads it and replaces the current binary in place.
@@ -89,11 +132,12 @@ OpenRouter-backed release note enrichment is intentionally not wired yet. Add it
 
 ## Design Notes
 
-The command framework is intentionally small. `nx git stat` is routed through an internal command dispatcher, and each concern is separated:
+The command framework is intentionally small. `nx git stat` and `nx token` are routed through an internal command dispatcher, and each concern is separated:
 
 - `internal/cli`: command routing
 - `internal/gitstat`: git collection logic
 - `internal/render`: terminal rendering
+- `internal/token`: token-usage dashboard (`core` collection/estimation, `ui` static views, `tui` interactive mode)
 - `internal/selfupdate`: daily release update checks
 
 No Cobra dependency yet. That is reversible if the command tree becomes large enough to justify it.

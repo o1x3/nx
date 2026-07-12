@@ -14,6 +14,9 @@ Current domains:
 - `internal/gitstat`: repository diff stats against the remote default branch.
 - `internal/render`: Lip Gloss terminal presentation.
 - `internal/selfupdate`: daily GitHub release checks and binary replacement.
+- `internal/token`: coding-agent token/cost usage stats across harnesses (claude, codex, pi, cursor), with `core` collection, `ui` rendering, and `tui` interactive views.
+
+Commands signal specific exit codes by returning `cli.ExitError` (0 ok, 2 usage error, 3 no data, 1 anything else).
 
 ## Command Model
 
