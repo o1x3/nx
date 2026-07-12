@@ -16,6 +16,8 @@ Current domains:
 - `internal/selfupdate`: daily GitHub release checks and binary replacement.
 - `internal/token`: coding-agent token/cost usage stats across harnesses (claude, codex, pi, cursor), with `core` collection, `ui` rendering, and `tui` interactive views.
 
+Dependency decision: `internal/token` reads Cursor's SQLite stores through `modernc.org/sqlite` (pure Go, ~4 MB added to the stripped binary). Rejected alternatives: `mattn/go-sqlite3` needs cgo and breaks the `CGO_ENABLED=0` cross-compiled releases; shelling out to a system `sqlite3` is a fragile runtime dependency; a hand-written SQLite/WAL reader is a correctness risk.
+
 Commands signal specific exit codes by returning `cli.ExitError` (0 ok, 2 usage error, 3 no data, 1 anything else).
 
 ## Command Model

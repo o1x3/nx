@@ -6,19 +6,16 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"regexp"
 	"time"
 
 	"github.com/o1x3/nx/internal/token/core"
 	"github.com/o1x3/nx/internal/token/tui"
 	"github.com/o1x3/nx/internal/token/ui"
 
-	"github.com/charmbracelet/lipgloss"
-	"github.com/mattn/go-isatty"
-	"github.com/muesli/termenv"
+	lipgloss "charm.land/lipgloss/v2"
+	"github.com/charmbracelet/colorprofile"
+	"github.com/charmbracelet/x/term"
 )
-
-var ansiSeq = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 
 type tokenOptions struct {
 	harness     string
@@ -112,62 +109,76 @@ func (a App) runToken(ctx context.Context, args []string, stdout io.Writer) erro
 	}
 
 	forced := os.Getenv("NX_TRUECOLOR") != ""
-	tty := isatty.IsTerminal(os.Stdout.Fd())
-
-	// Colour handling: force 24-bit when asked (capture / under-reporting
-	// terminals), strip colour when piped or redirected, otherwise let lipgloss
-	// auto-detect (truecolor terminals get the full pastel palette).
-	switch {
-	case forced:
-		lipgloss.SetColorProfile(termenv.TrueColor)
-	case !tty:
-		lipgloss.SetColorProfile(termenv.Ascii)
-	}
-
-	// Light/dark detection so foreground colours stay legible on any terminal.
-	// nx token paints no background; it adapts to yours. NX_BACKGROUND overrides.
-	switch os.Getenv("NX_BACKGROUND") {
-	case "light":
-		lipgloss.SetHasDarkBackground(false)
-	case "dark":
-		lipgloss.SetHasDarkBackground(true)
-	default:
-		if tty {
-			lipgloss.SetHasDarkBackground(termenv.HasDarkBackground())
-		}
-	}
+	tty := term.IsTerminal(os.Stdout.Fd())
 
 	now := time.Now()
 
-	// Standalone output modes bypass the card entirely. They exit 3 when the
-	// selected harness has no usage, so they compose in scripts and CI.
+	// quiet/json bypass the card and emit no styling, so dispatch them before
+	// any colour work — no reason to query the terminal for those. They exit 3
+	// when the selected harness has no usage, so they compose in scripts and CI.
 	switch {
 	case o.quiet:
 		return runTokenQuiet(o, now, stdout)
 	case o.jsonOut:
 		return runTokenJSON(o, now, stdout)
-	case o.compare:
-		return runTokenCompare(o, now, tty, forced, stdout)
+	}
+
+	// Light/dark detection so foreground colours stay legible on any terminal.
+	// nx token paints no background; it adapts to yours. NX_BACKGROUND overrides
+	// (and skips the terminal query, which momentarily raw-modes the tty).
+	// Non-TTY output defaults to the dark palette, matching v1 behaviour.
+	dark := true
+	darkLocked := false
+	switch os.Getenv("NX_BACKGROUND") {
+	case "light":
+		dark, darkLocked = false, true
+	case "dark":
+		dark, darkLocked = true, true
+	default:
+		if tty {
+			dark = lipgloss.HasDarkBackground(os.Stdin, os.Stdout)
+		}
+	}
+
+	// Colour handling: lipgloss v2 styles always emit truecolor escapes;
+	// downsampling/stripping happens at write time. Force 24-bit when asked
+	// (capture / under-reporting terminals), strip every escape when piped or
+	// redirected, otherwise downsample to whatever the terminal supports.
+	var profile colorprofile.Profile
+	switch {
+	case forced:
+		profile = colorprofile.TrueColor
+	case !tty:
+		profile = colorprofile.NoTTY
+	default:
+		profile = colorprofile.Detect(os.Stdout, os.Environ())
+	}
+
+	// Plain mode follows the effective profile, not just tty-ness, so NO_COLOR
+	// or TERM=dumb on a real terminal still gets shade-glyph density cells.
+	ui.Configure(dark, profile <= colorprofile.ASCII)
+	out := &colorprofile.Writer{Forward: stdout, Profile: profile}
+
+	if o.compare {
+		return runTokenCompare(o, now, out)
 	}
 
 	if o.interactive {
-		return tui.Run(o.harness, o.rng, o.tab)
+		return tui.Run(o.harness, o.rng, o.tab, tui.Options{
+			Dark:           dark,
+			DarkLocked:     darkLocked,
+			ForceTruecolor: forced,
+		})
 	}
 
 	agg := core.Load(o.harness)
 	s := core.Summarize(agg, o.rng, now)
-	out := ui.RenderCard(s, o.tab)
-
-	// Strip residual (empty) escape sequences for clean plaintext when piped.
-	if !tty && !forced {
-		out = ansiSeq.ReplaceAllString(out, "")
-	}
-	fmt.Fprintln(stdout, out)
+	fmt.Fprintln(out, ui.RenderCard(s, o.tab))
 
 	// Nudge toward the interactive view when on a real terminal. Update checks
 	// are nx-wide (selfupdate), not per-command, so no notice is printed here.
 	if tty {
-		fmt.Fprintln(stdout, ui.Hint("run `nx token -i` for the interactive view"))
+		fmt.Fprintln(out, ui.Hint("run `nx token -i` for the interactive view"))
 	}
 	return nil
 }
@@ -225,20 +236,17 @@ func runTokenJSON(o tokenOptions, now time.Time, stdout io.Writer) error {
 	return nil
 }
 
-// runTokenCompare renders the side-by-side harness card. tty/forced mirror the
-// card path's colour handling so piped output is stripped of residual escapes.
-func runTokenCompare(o tokenOptions, now time.Time, tty, forced bool, stdout io.Writer) error {
+// runTokenCompare renders the side-by-side harness card. stdout is the card
+// path's colorprofile writer, so piped output is stripped of escapes and
+// lesser terminals get downsampled colours.
+func runTokenCompare(o tokenOptions, now time.Time, stdout io.Writer) error {
 	var sums []core.Summary
 	for _, h := range core.Harnesses {
 		if s := core.Summarize(core.Load(h), o.rng, now); s.HasData() {
 			sums = append(sums, s)
 		}
 	}
-	out := ui.RenderCompare(sums, o.rng)
-	if !tty && !forced {
-		out = ansiSeq.ReplaceAllString(out, "")
-	}
-	fmt.Fprintln(stdout, out)
+	fmt.Fprintln(stdout, ui.RenderCompare(sums, o.rng))
 	if len(sums) == 0 {
 		return ExitError{Code: 3}
 	}

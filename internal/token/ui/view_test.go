@@ -8,21 +8,21 @@ import (
 
 	"github.com/o1x3/nx/internal/token/core"
 
-	"github.com/charmbracelet/lipgloss"
-	"github.com/muesli/termenv"
+	"charm.land/lipgloss/v2"
 )
 
 func init() {
-	// deterministic colour output for width assertions
-	lipgloss.SetColorProfile(termenv.TrueColor)
-	lipgloss.SetHasDarkBackground(true)
+	// deterministic colour output for width assertions: dark variants, colour
+	// cells (v2 styles always emit truecolor; profile handling happens in the
+	// caller's writer, so tests strip SGR before asserting)
+	Configure(true, false)
 }
 
 var ansi = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 
 func dispWidth(s string) int { return lipgloss.Width(ansi.ReplaceAllString(s, "")) }
 
-func sampleSummary(tab string) core.Summary {
+func sampleSummary(_ string) core.Summary {
 	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.Local)
 	a := &core.Aggregate{
 		Harness:     core.Combined,
@@ -250,7 +250,7 @@ func hasBackgroundSGR(s string) bool {
 func TestMonthRowNoDroppedMonth(t *testing.T) {
 	first := time.Date(2024, 9, 29, 0, 0, 0, 0, time.Local) // a Sunday
 	h := core.Heatmap{Weeks: 22, FirstDay: first}
-	for r := 0; r < 7; r++ {
+	for r := range 7 {
 		h.Cells[r] = make([]int64, 22)
 	}
 	row := ansi.ReplaceAllString(renderMonthRow(h, 22), "")
@@ -261,11 +261,13 @@ func TestMonthRowNoDroppedMonth(t *testing.T) {
 	}
 }
 
-// When colour is stripped (piped output) the heatmap falls back to shade
-// glyphs and the swatches to █ blocks; lines must still stay within budget.
+// When colour will be stripped (piped output) the heatmap falls back to shade
+// glyphs; stripped lines must still stay within budget. Note the v2 semantic:
+// plain mode still emits SGR (the caller's writer strips it), so assertions
+// run on the SGR-stripped text.
 func TestRenderCardAsciiWidth(t *testing.T) {
-	lipgloss.SetColorProfile(termenv.Ascii)
-	defer lipgloss.SetColorProfile(termenv.TrueColor)
+	Configure(true, true)
+	defer Configure(true, false)
 
 	for _, tab := range TabOrder {
 		out := RenderCard(sampleSummary(tab), tab)
@@ -273,6 +275,29 @@ func TestRenderCardAsciiWidth(t *testing.T) {
 			if w := dispWidth(l); w > 80 {
 				t.Errorf("ascii %s line %d width %d exceeds 80:\n%q", tab, i, w, l)
 			}
+		}
+	}
+}
+
+// Plain mode must swap colour-only ██ heatmap cells for printable shade
+// glyphs so density still reads once SGR is stripped; colour mode must not
+// leak shade cells into the heatmap grid.
+func TestPlainModeShadeGlyphs(t *testing.T) {
+	Configure(true, true)
+	defer Configure(true, false)
+	plain := ansi.ReplaceAllString(RenderCard(sampleSummary(TabOverview), TabOverview), "")
+	// the legend always shows the full ramp: "Less" ░░ ▒▒ ▓▓ ██ "More"
+	for _, g := range []string{"░░", "▒▒", "▓▓", "██"} {
+		if !strings.Contains(plain, g) {
+			t.Errorf("plain overview missing shade glyph %q", g)
+		}
+	}
+
+	Configure(true, false)
+	colour := ansi.ReplaceAllString(RenderCard(sampleSummary(TabOverview), TabOverview), "")
+	for _, g := range []string{"░░", "▒▒", "▓▓"} {
+		if strings.Contains(colour, g) {
+			t.Errorf("colour overview contains shade glyph %q; cells should be coloured ██", g)
 		}
 	}
 }

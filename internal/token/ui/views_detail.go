@@ -48,7 +48,7 @@ func renderHours(th Theme, s core.Summary) string {
 		}
 	}
 	if total == 0 {
-		return title + "\n" + styled(muted).Render("No activity in this window.")
+		return title + "\n" + styled(muted()).Render("No activity in this window.")
 	}
 	// The count column auto-sizes to the widest formatted count: an all-time
 	// hour bucket can exceed 99,999 → "100,000" and overflow a fixed-5 field.
@@ -61,7 +61,7 @@ func renderHours(th Theme, s core.Summary) string {
 	const barW = 46
 	plain := ascii()
 	rows := []string{title, ""}
-	for h := 0; h < 24; h++ {
+	for h := range 24 {
 		n := int64(s.Hours[h])
 		bar := densityBar(th, n, max, barW)
 		lbl := padRight(core.FormatHour(h), 5)
@@ -74,14 +74,14 @@ func renderHours(th Theme, s core.Summary) string {
 			rows = append(rows, line)
 			continue
 		}
-		rows = append(rows, styled(label).Render(lbl)+" "+bar+styled(label).Render(count))
+		rows = append(rows, styled(label()).Render(lbl)+" "+bar+styled(label()).Render(count))
 	}
 	var evening int64
 	for h := 18; h < 24; h++ {
 		evening += int64(s.Hours[h])
 	}
 	pct := int(math.Round(float64(evening) / float64(total) * 100))
-	rows = append(rows, "", styled(muted).Render(fmt.Sprintf("peak %s · %d%% after 6 PM", core.FormatHour(s.PeakHour), pct)))
+	rows = append(rows, "", styled(muted()).Render(fmt.Sprintf("peak %s · %d%% after 6 PM", core.FormatHour(s.PeakHour), pct)))
 	return strings.Join(rows, "\n")
 }
 
@@ -96,10 +96,7 @@ func punchLevel(v, max int64) int {
 	}
 	// log so one busy hour doesn't wash the rest of the grid out
 	lvl := 1 + int(math.Log1p(float64(v))/math.Log1p(float64(max))*3)
-	if lvl > 4 {
-		lvl = 4
-	}
-	return lvl
+	return min(lvl, 4)
 }
 
 func punchCell(th Theme, v, max int64, peak, plain bool) string {
@@ -107,7 +104,7 @@ func punchCell(th Theme, v, max int64, peak, plain bool) string {
 		if plain {
 			return "·" // distinct zero glyph so the grid still reads when piped
 		}
-		return styled(muted).Render("·")
+		return styled(muted()).Render("·")
 	}
 	if peak {
 		if plain {
@@ -123,17 +120,17 @@ func punchCell(th Theme, v, max int64, peak, plain bool) string {
 }
 
 func renderPunchcard(th Theme, s core.Summary) string {
-	title := styled(th.Accent).Bold(true).Render("When you work") + styled(muted).Render(" · weekday × hour")
+	title := styled(th.Accent).Bold(true).Render("When you work") + styled(muted()).Render(" · weekday × hour")
 	var gridMax, peakWd, peakHr int
-	for wd := 0; wd < 7; wd++ {
-		for h := 0; h < 24; h++ {
+	for wd := range 7 {
+		for h := range 24 {
 			if v := s.Punch[wd][h]; v > gridMax {
 				gridMax, peakWd, peakHr = v, wd, h
 			}
 		}
 	}
 	if gridMax == 0 {
-		return title + "\n" + styled(muted).Render("No activity in this window.")
+		return title + "\n" + styled(muted()).Render("No activity in this window.")
 	}
 	plain := ascii()
 
@@ -152,8 +149,8 @@ func renderPunchcard(th Theme, s core.Summary) string {
 
 	var maxRow int64
 	rowSums := [7]int64{}
-	for wd := 0; wd < 7; wd++ {
-		for h := 0; h < 24; h++ {
+	for wd := range 7 {
+		for h := range 24 {
 			rowSums[wd] += int64(s.Punch[wd][h])
 		}
 		if rowSums[wd] > maxRow {
@@ -162,25 +159,25 @@ func renderPunchcard(th Theme, s core.Summary) string {
 	}
 
 	gut := [7]string{"    ", "Mon ", "    ", "Wed ", "    ", "Fri ", "    "}
-	rows := []string{title, "", styled(label).Render("    " + string(ruler))}
-	for wd := 0; wd < 7; wd++ {
+	rows := []string{title, "", styled(label()).Render("    " + string(ruler))}
+	for wd := range 7 {
 		var sb strings.Builder
-		sb.WriteString(styled(label).Render(gut[wd]))
-		for h := 0; h < 24; h++ {
+		sb.WriteString(styled(label()).Render(gut[wd]))
+		for h := range 24 {
 			sb.WriteString(punchCell(th, int64(s.Punch[wd][h]), int64(gridMax), wd == peakWd && h == peakHr, plain))
 		}
 		sb.WriteString("  ") // right-margin weekday marginal
 		sb.WriteString(punchCell(th, rowSums[wd], maxRow, false, plain))
 		rows = append(rows, sb.String())
 	}
-	rows = append(rows, "", styled(muted).Render(fmt.Sprintf("busiest: %s %s · activity, not tokens", weekdayNames[peakWd], core.FormatHour(peakHr))))
+	rows = append(rows, "", styled(muted()).Render(fmt.Sprintf("busiest: %s %s · activity, not tokens", weekdayNames[peakWd], core.FormatHour(peakHr))))
 	return strings.Join(rows, "\n")
 }
 
 // ---- trend: daily sparkline + averages + momentum ----
 
 func renderTrend(th Theme, s core.Summary) string {
-	title := styled(th.Accent).Bold(true).Render("Daily tokens") + styled(muted).Render(fmt.Sprintf(" · last %dd", s.DailyDays))
+	title := styled(th.Accent).Bold(true).Render("Daily tokens") + styled(muted()).Render(fmt.Sprintf(" · last %dd", s.DailyDays))
 	var total, max int64
 	for _, v := range s.Daily {
 		total += v
@@ -189,7 +186,7 @@ func renderTrend(th Theme, s core.Summary) string {
 		}
 	}
 	if total == 0 {
-		return title + "\n" + styled(muted).Render("No tokens in this window.")
+		return title + "\n" + styled(muted()).Render("No tokens in this window.")
 	}
 	rows := []string{title, "", sparkline(th, s.Daily), ""}
 	if s.ActiveDays > 0 {
@@ -237,7 +234,7 @@ func wowDelta(last, prev int64) string {
 func renderTopDays(th Theme, s core.Summary) string {
 	title := styled(th.Accent).Bold(true).Render("Busiest days")
 	if len(s.TopDays) == 0 {
-		return title + "\n" + styled(muted).Render("No activity in this window.")
+		return title + "\n" + styled(muted()).Render("No activity in this window.")
 	}
 	var max int64 = 1 // guard: TopDaysIn can include zero-token, message-only days
 	for _, d := range s.TopDays {
@@ -248,7 +245,7 @@ func renderTopDays(th Theme, s core.Summary) string {
 	const barW = 24
 	rows := []string{title, ""}
 	for _, d := range s.TopDays {
-		date := styled(value).Bold(true).Render(padRight(d.Date.Format("Mon Jan 2"), 11))
+		date := styled(value()).Bold(true).Render(padRight(d.Date.Format("Mon Jan 2"), 11))
 		var bar, toks string
 		if d.Tokens > 0 {
 			bar = densityBar(th, d.Tokens, max, barW)
@@ -258,7 +255,7 @@ func renderTopDays(th Theme, s core.Summary) string {
 			toks = padLeft("—", 7)
 		}
 		msgs := padLeft(core.FormatInt(d.Messages)+" msg", 10)
-		rows = append(rows, date+"  "+bar+styled(label).Render("  "+toks)+styled(muted).Render("  "+msgs))
+		rows = append(rows, date+"  "+bar+styled(label()).Render("  "+toks)+styled(muted()).Render("  "+msgs))
 	}
 	return strings.Join(rows, "\n")
 }
@@ -277,7 +274,7 @@ func renderWeekday(th Theme, s core.Summary) string {
 		}
 	}
 	if total == 0 {
-		return title + "\n" + styled(muted).Render("No activity in this window.")
+		return title + "\n" + styled(muted()).Render("No activity in this window.")
 	}
 	const barW = 46
 	rows := []string{title, ""}
@@ -288,13 +285,13 @@ func renderWeekday(th Theme, s core.Summary) string {
 			bestTok, busiest = tok, labels[i]
 		}
 		bar := densityBar(th, tok, max, barW)
-		meta := styled(label).Render("  "+padLeft(core.FormatTokens(tok), 7)) +
-			styled(muted).Render("  "+padLeft(core.FormatInt(msg), 6))
-		rows = append(rows, styled(value).Render(padRight(labels[i], 4))+bar+meta)
+		meta := styled(label()).Render("  "+padLeft(core.FormatTokens(tok), 7)) +
+			styled(muted()).Render("  "+padLeft(core.FormatInt(msg), 6))
+		rows = append(rows, styled(value()).Render(padRight(labels[i], 4))+bar+meta)
 	}
 	weekend := s.WeekdayTok[0] + s.WeekdayTok[6] // Sun + Sat
 	wpct := int(math.Round(float64(weekend) / float64(total) * 100))
-	rows = append(rows, "", styled(muted).Render(fmt.Sprintf("weekend %d%% · busiest %s", wpct, busiest)))
+	rows = append(rows, "", styled(muted()).Render(fmt.Sprintf("weekend %d%% · busiest %s", wpct, busiest)))
 	return strings.Join(rows, "\n")
 }
 
@@ -304,7 +301,7 @@ func renderCost(th Theme, s core.Summary) string {
 	cb := s.Cost
 	title := styled(th.Accent).Bold(true).Render("Estimated spend")
 	if cb.Total <= 0 {
-		return title + "\n" + styled(muted).Render("No priced usage in this window.")
+		return title + "\n" + styled(muted()).Render("No priced usage in this window.")
 	}
 	head := rightAlign(title, styled(th.Accent).Bold(true).Render("≈ "+core.FormatUSD(cb.Total)), contentW)
 	rows := []string{head, ""}
@@ -324,17 +321,17 @@ func renderCost(th Theme, s core.Summary) string {
 		if m.USD <= 0 {
 			continue
 		}
-		name := styled(value).Bold(true).Render(padRight(truncate(m.Name, nameW), nameW))
+		name := styled(value()).Bold(true).Render(padRight(truncate(m.Name, nameW), nameW))
 		bar := densityBarF(th, m.USD, max, barW)
-		rows = append(rows, name+bar+styled(label).Render("  "+padLeft(core.FormatUSD(m.USD), 9)))
+		rows = append(rows, name+bar+styled(label()).Render("  "+padLeft(core.FormatUSD(m.USD), 9)))
 	}
 	rows = append(rows, "")
 	if cb.CacheSavingUSD > 0 {
 		rows = append(rows, styled(th.Accent).Render("⌁ ")+
-			styled(value).Bold(true).Render(core.FormatUSD(cb.CacheSavingUSD))+
-			styled(muted).Render(" saved by prompt caching"))
+			styled(value()).Bold(true).Render(core.FormatUSD(cb.CacheSavingUSD))+
+			styled(muted()).Render(" saved by prompt caching"))
 	}
-	rows = append(rows, styled(muted).Render(fmt.Sprintf("tokens: %s in · %s out · %s cache",
+	rows = append(rows, styled(muted()).Render(fmt.Sprintf("tokens: %s in · %s out · %s cache",
 		core.FormatTokens(s.InputTokens), core.FormatTokens(s.OutputTokens),
 		core.FormatTokens(s.CacheReadTokens+s.CacheWriteTokens))))
 
@@ -348,7 +345,7 @@ func renderCost(th Theme, s core.Summary) string {
 	if s.TokensEstimated {
 		disc += " · cursor tokens estimated"
 	}
-	rows = append(rows, styled(muted).Faint(true).Render(disc))
+	rows = append(rows, styled(muted()).Faint(true).Render(disc))
 	return strings.Join(rows, "\n")
 }
 
@@ -409,7 +406,7 @@ func renderMix(th Theme, s core.Summary) string {
 		segs = append(segs, sg)
 	}
 	if total == 0 {
-		return title + "\n" + styled(muted).Render("No tokens in this window.")
+		return title + "\n" + styled(muted()).Render("No tokens in this window.")
 	}
 	plain := ascii()
 	const barW = 56
@@ -439,20 +436,20 @@ func renderMix(th Theme, s core.Summary) string {
 		} else {
 			glyph = styled(th.Ramp[sg.lvl]).Render("█")
 		}
-		rows = append(rows, glyph+" "+styled(label).Render(padRight(sg.name, 12))+
-			styled(value).Render(padLeft(core.FormatTokens(sg.val), 7))+
-			styled(muted).Render("  "+padLeft(fmt.Sprintf("%.0f%%", pct), 4)))
+		rows = append(rows, glyph+" "+styled(label()).Render(padRight(sg.name, 12))+
+			styled(value()).Render(padLeft(core.FormatTokens(sg.val), 7))+
+			styled(muted()).Render("  "+padLeft(fmt.Sprintf("%.0f%%", pct), 4)))
 	}
 	if s.InputTokens+s.CacheReadTokens > 0 {
 		eff := int(math.Round(float64(s.CacheReadTokens) / float64(s.InputTokens+s.CacheReadTokens) * 100))
-		rows = append(rows, "", styled(value).Bold(true).Render(fmt.Sprintf("cache efficiency %d%%", eff))+
-			styled(muted).Render(" of input served from cache"))
+		rows = append(rows, "", styled(value()).Bold(true).Render(fmt.Sprintf("cache efficiency %d%%", eff))+
+			styled(muted()).Render(" of input served from cache"))
 	}
 	if s.Range != core.RangeAll {
-		rows = append(rows, styled(muted).Faint(true).Render("split is the all-time ratio (windowed split unavailable)"))
+		rows = append(rows, styled(muted()).Faint(true).Render("split is the all-time ratio (windowed split unavailable)"))
 	}
 	if s.TokensEstimated {
-		rows = append(rows, styled(muted).Faint(true).Render("cursor tokens estimated (bytes/4)"))
+		rows = append(rows, styled(muted()).Faint(true).Render("cursor tokens estimated (bytes/4)"))
 	}
 	return strings.Join(rows, "\n")
 }

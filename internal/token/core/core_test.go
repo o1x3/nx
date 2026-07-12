@@ -173,7 +173,7 @@ func TestHeatmapShape(t *testing.T) {
 	if h.FirstDay.Weekday() != time.Sunday {
 		t.Errorf("FirstDay = %v, want a Sunday", h.FirstDay)
 	}
-	for r := 0; r < 7; r++ {
+	for r := range 7 {
 		if len(h.Cells[r]) != h.Weeks {
 			t.Fatalf("row %d has %d cols, want %d", r, len(h.Cells[r]), h.Weeks)
 		}

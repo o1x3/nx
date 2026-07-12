@@ -9,8 +9,9 @@ import (
 	"github.com/o1x3/nx/internal/token/core"
 	"github.com/o1x3/nx/internal/token/ui"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/colorprofile"
 )
 
 var (
@@ -19,6 +20,13 @@ var (
 	tabs      = ui.TabOrder
 )
 
+// Options carries terminal state resolved by the CLI layer into the program.
+type Options struct {
+	Dark           bool // initial background guess from the CLI's detection
+	DarkLocked     bool // NX_BACKGROUND set: never re-detect the background
+	ForceTruecolor bool // NX_TRUECOLOR set: emit 24-bit colour regardless
+}
+
 type model struct {
 	aggs    map[string]*core.Aggregate
 	hi, ri  int // harness / range index
@@ -26,18 +34,24 @@ type model struct {
 	now     time.Time
 	w, h    int
 	hintCol lipgloss.Style
+	dark    bool // terminal background is dark
+	plain   bool // terminal has no color support
+	opts    Options
 }
 
 // New builds the interactive model with the given start harness/range/tab.
-func New(harness, rng, tab string) model {
+func New(harness, rng, tab string, opts Options) model {
 	m := model{
 		aggs: core.LoadEach(), // one pass over every harness, Combined included
 		now:  time.Now(),
+		dark: opts.Dark,
+		opts: opts,
 	}
 	m.hi = indexOf(harnesses, harness, 0)
 	m.ri = indexOf(ranges, rng, 0)
 	m.tab = indexOf(tabs, tab, 0)
 	m.hintCol = lipgloss.NewStyle().Foreground(lipgloss.Color("#565668"))
+	ui.Configure(m.dark, m.plain)
 	return m
 }
 
@@ -50,13 +64,27 @@ func indexOf(s []string, v string, def int) int {
 	return def
 }
 
-func (m model) Init() tea.Cmd { return nil }
+func (m model) Init() tea.Cmd {
+	if m.opts.DarkLocked {
+		return nil // NX_BACKGROUND override: don't ask the terminal
+	}
+	return tea.RequestBackgroundColor
+}
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.w, m.h = msg.Width, msg.Height
-	case tea.KeyMsg:
+	case tea.BackgroundColorMsg:
+		if m.opts.DarkLocked {
+			break
+		}
+		m.dark = msg.IsDark()
+		ui.Configure(m.dark, m.plain)
+	case tea.ColorProfileMsg:
+		m.plain = msg.Profile <= colorprofile.ASCII
+		ui.Configure(m.dark, m.plain)
+	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "q", "esc", "ctrl+c":
 			return m, tea.Quit
@@ -81,7 +109,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m model) View() string {
+func (m model) View() tea.View {
 	agg := m.aggs[harnesses[m.hi]]
 	s := core.Summarize(agg, ranges[m.ri], m.now)
 	card := ui.RenderCard(s, tabs[m.tab])
@@ -90,14 +118,20 @@ func (m model) View() string {
 	body := lipgloss.JoinVertical(lipgloss.Center, card, "", hint)
 
 	if m.w > 0 && m.h > 0 {
-		return lipgloss.Place(m.w, m.h, lipgloss.Center, lipgloss.Center, body)
+		body = lipgloss.Place(m.w, m.h, lipgloss.Center, lipgloss.Center, body)
 	}
-	return body
+	v := tea.NewView(body)
+	v.AltScreen = true
+	return v
 }
 
 // Run starts the interactive program.
-func Run(harness, rng, tab string) error {
-	p := tea.NewProgram(New(harness, rng, tab), tea.WithAltScreen())
+func Run(harness, rng, tab string, opts Options) error {
+	var popts []tea.ProgramOption
+	if opts.ForceTruecolor {
+		popts = append(popts, tea.WithColorProfile(colorprofile.TrueColor))
+	}
+	p := tea.NewProgram(New(harness, rng, tab, opts), popts...)
 	_, err := p.Run()
 	return err
 }

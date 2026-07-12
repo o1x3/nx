@@ -8,36 +8,45 @@ import (
 
 	"github.com/o1x3/nx/internal/token/core"
 
-	"github.com/charmbracelet/lipgloss"
-	"github.com/muesli/termenv"
+	"charm.land/lipgloss/v2"
 )
 
 var ansiX = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 
 func dw(s string) int { return lipgloss.Width(ansiX.ReplaceAllString(s, "")) }
 
-// checkUniform renders every tab under both colour profiles and asserts the
-// card never panics and never exceeds the width budget. Lines are intentionally
-// ragged now (no background ⇒ no need for uniform width).
+// checkUniform renders every tab under every render mode (dark/light ×
+// colour/plain) and asserts the card never panics and never exceeds the width
+// budget on the SGR-stripped text. Lines are intentionally ragged now (no
+// background ⇒ no need for uniform width).
 func checkUniform(t *testing.T, name string, s core.Summary) {
-	for _, prof := range []termenv.Profile{termenv.TrueColor, termenv.Ascii} {
-		lipgloss.SetColorProfile(prof)
+	modes := []struct {
+		name        string
+		dark, plain bool
+	}{
+		{"dark", true, false},
+		{"light", false, false},
+		{"dark-plain", true, true},
+		{"light-plain", false, true},
+	}
+	for _, m := range modes {
+		Configure(m.dark, m.plain)
 		for _, tab := range TabOrder {
 			func() {
 				defer func() {
 					if r := recover(); r != nil {
-						t.Errorf("PANIC %s prof=%v tab=%s: %v", name, prof, tab, r)
+						t.Errorf("PANIC %s mode=%s tab=%s: %v", name, m.name, tab, r)
 					}
 				}()
 				for i, l := range strings.Split(RenderCard(s, tab), "\n") {
 					if w := dw(l); w > 80 {
-						t.Errorf("OVER80 %s prof=%v tab=%s line %d w=%d: %q", name, prof, tab, i, w, l)
+						t.Errorf("OVER80 %s mode=%s tab=%s line %d w=%d: %q", name, m.name, tab, i, w, l)
 					}
 				}
 			}()
 		}
 	}
-	lipgloss.SetColorProfile(termenv.TrueColor)
+	Configure(true, false)
 }
 
 func baseHeatmap(now time.Time) core.Heatmap {
@@ -46,7 +55,7 @@ func baseHeatmap(now time.Time) core.Heatmap {
 	weekStart := today.AddDate(0, 0, -int(today.Weekday()))
 	first := weekStart.AddDate(0, 0, -7*(weeks-1))
 	h := core.Heatmap{Weeks: weeks, FirstDay: first}
-	for r := 0; r < 7; r++ {
+	for r := range 7 {
 		h.Cells[r] = make([]int64, weeks)
 	}
 	return h
@@ -108,10 +117,10 @@ func TestAdvLongFav(t *testing.T) {
 // FirstDay positioned so a month label lands at the far right edge.
 func TestAdvMonthEdge(t *testing.T) {
 	// Try many FirstDay values to land a month-start at x near innerWidth.
-	for d := 0; d < 400; d++ {
+	for d := range 400 {
 		first := time.Date(2025, 1, 1, 0, 0, 0, 0, time.Local).AddDate(0, 0, d)
 		h := core.Heatmap{Weeks: 22, FirstDay: first}
-		for r := 0; r < 7; r++ {
+		for r := range 7 {
 			h.Cells[r] = make([]int64, 22)
 		}
 		s := core.Summary{Harness: core.Combined, Range: core.RangeAll, PeakHour: -1, Heatmap: h}
@@ -127,7 +136,7 @@ func TestAdvManyWeeks(t *testing.T) {
 	for _, weeks := range []int{1, 23, 24, 30, 40, 100} {
 		first := weekStart.AddDate(0, 0, -7*(weeks-1))
 		h := core.Heatmap{Weeks: weeks, FirstDay: first}
-		for r := 0; r < 7; r++ {
+		for r := range 7 {
 			h.Cells[r] = make([]int64, weeks)
 		}
 		s := core.Summary{Harness: core.Combined, Range: core.RangeAll, PeakHour: -1, Heatmap: h}

@@ -185,11 +185,11 @@ func buildHeatmap(a *Aggregate, rng string, now time.Time) Heatmap {
 	}
 
 	h := Heatmap{Weeks: weeks, FirstDay: first}
-	for r := 0; r < 7; r++ {
+	for r := range 7 {
 		h.Cells[r] = make([]int64, weeks)
 	}
-	for col := 0; col < weeks; col++ {
-		for row := 0; row < 7; row++ {
+	for col := range weeks {
+		for row := range 7 {
 			d := first.AddDate(0, 0, col*7+row)
 			switch {
 			case d.After(today):

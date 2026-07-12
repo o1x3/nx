@@ -1,10 +1,9 @@
 package ui
 
 import (
+	"image/color"
 	"math"
 	"strings"
-
-	"github.com/charmbracelet/lipgloss"
 )
 
 // sparkBlocks are the eight one-cell heights used for unicode sparklines, low
@@ -45,7 +44,7 @@ func sparkline(th Theme, vals []int64) string {
 			if plain {
 				sb.WriteRune(sparkBlocks[0])
 			} else {
-				sb.WriteString(styled(muted).Render(string(sparkBlocks[0])))
+				sb.WriteString(styled(muted()).Render(string(sparkBlocks[0])))
 			}
 			continue
 		}
@@ -55,9 +54,7 @@ func sparkline(th Theme, vals []int64) string {
 		if denom > 0 {
 			idx = 1 + int(math.Round(math.Log1p(float64(v))/denom*float64(len(sparkBlocks)-2)))
 		}
-		if idx > len(sparkBlocks)-1 {
-			idx = len(sparkBlocks) - 1
-		}
+		idx = min(idx, len(sparkBlocks)-1)
 		g := string(sparkBlocks[idx])
 		if plain {
 			sb.WriteString(g)
@@ -72,17 +69,12 @@ func sparkline(th Theme, vals []int64) string {
 // hbar renders a horizontal bar: `filled` ramp-coloured blocks padded with
 // spaces to `width` (no heavy track, matching the models tab). filled is
 // clamped to [0,width]; a positive value always shows at least one block.
-func hbar(color lipgloss.TerminalColor, filled, width int) string {
+func hbar(c color.Color, filled, width int) string {
 	if width <= 0 {
 		return ""
 	}
-	if filled < 0 {
-		filled = 0
-	}
-	if filled > width {
-		filled = width
-	}
-	return styled(color).Render(strings.Repeat("█", filled)) + strings.Repeat(" ", width-filled)
+	filled = max(min(filled, width), 0)
+	return styled(c).Render(strings.Repeat("█", filled)) + strings.Repeat(" ", width-filled)
 }
 
 // barCells maps a value to a filled-cell count over [0,max] across width cells,
