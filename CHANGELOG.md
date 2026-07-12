@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.1
+
+- Migrated `nx token` rendering to the charm.land v2 stack (`lipgloss/v2`, `bubbletea/v2`), removing the duplicate lipgloss v1/termenv/isatty dependency family; the whole binary now uses one styling stack. Output is unchanged.
+- Improved color handling when piped or on limited terminals: ANSI is now stripped/downsampled at write time via `colorprofile`, and `NO_COLOR`/`CLICOLOR` are respected on auto-detected terminals.
+- Improved truecolor fidelity: theme colors now emit their exact declared hex values (lipgloss v1 rounded some RGB channels off by one).
+- Documented the `modernc.org/sqlite` dependency decision in AGENTS.md and cleaned up ported code to modern Go idioms (range-over-int, min/max, strings.Builder).
+
 ## 0.1.0
 
 - Added the `nx token` command family (alias: `nx tokens`): a pastel terminal dashboard for AI coding-harness token usage, ported from tmax.
