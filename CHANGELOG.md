@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.0
+
+- Added the `nx token` command family (alias: `nx tokens`): a pastel terminal dashboard for AI coding-harness token usage, ported from tmax.
+- Added four harnesses: Claude Code, Codex, pi.dev, and Cursor (IDE + `cursor-agent` CLI merged; Cursor tokens are estimated from transcript size (~4 bytes/token) since Cursor stores no real token counts locally).
+- Added nine card views: overview, models, hours, punchcard, trend, topdays, weekday, cost, and mix, selectable with order-independent positional arguments alongside harness and range (`alltime`, `30d`, `7d`).
+- Improved model display names over tmax: legacy Claude ids render as "Sonnet 3.5"-style names (e.g. `claude-3-5-sonnet-20241022` → "Sonnet 3.5", where tmax rendered "3 5.sonnet").
+- Added standalone output modes: `json` (NDJSON for `all`), `quiet` one-liner for shell prompts, and `compare` side-by-side harness view.
+- Added an interactive TUI (`nx token -i`) with harness/tab/range navigation.
+- Added adaptive light/dark rendering with `NX_BACKGROUND` and `NX_TRUECOLOR` overrides, plus plain-text output when piped.
+- Added distinct exit codes for scripting: 0 ok, 2 bad arguments, 3 no usage for the selection (output modes).
+
 ## 0.0.4
 
 - Fixed `nx git stat` default-branch fallback when `git remote show -n origin` reports `HEAD branch: (not queried)`.
