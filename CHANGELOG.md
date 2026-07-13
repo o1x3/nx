@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.3
+
+- Fixed self-update noise on root-owned installs (e.g. `/usr/local/bin`): when the install directory is not writable, the daily update check now skips quietly instead of printing `permission denied`.
+- Changed the curl installer default to `~/.local/bin` (no `sudo`) so new installs stay user-writable and self-update works; refuses non-writable `NX_INSTALL_DIR` targets instead of escalating with `sudo`.
+- Installer now ensures the install bindir is on `PATH` via the user shell profile, and re-running it migrates an older `/usr/local/bin/nx` install by removing the stale binary.
+
 ## 0.1.2
 
 - Improved `nx token` load performance: harnesses and session files are parsed concurrently, Cursor SQLite databases open read-only in place (no temp copy unless the live file is locked), and parsed aggregates are cached under `~/.cache/nx/token` keyed by source file mtimes. Set `NX_TOKEN_NO_CACHE=1` to bypass the cache.

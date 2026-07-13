@@ -72,6 +72,20 @@ func Check(ctx context.Context, opts Options) {
 }
 
 func update(ctx context.Context, opts Options) error {
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	if resolved, err := filepath.EvalSymlinks(exe); err == nil {
+		exe = resolved
+	}
+	targetDir := filepath.Dir(exe)
+	// Default installs land in root-owned dirs like /usr/local/bin. Skip
+	// quietly when we cannot write a replacement beside the current binary.
+	if !canWriteDir(targetDir) {
+		return nil
+	}
+
 	rel, err := latestRelease(ctx, opts.Repo)
 	if err != nil {
 		return err
@@ -89,10 +103,6 @@ func update(ctx context.Context, opts Options) error {
 		return errors.New("release has no checksums.txt asset")
 	}
 
-	exe, err := os.Executable()
-	if err != nil {
-		return err
-	}
 	archivePath, err := downloadFile(ctx, asset.URL, os.TempDir(), ".nx-archive-*")
 	if err != nil {
 		return err
@@ -103,7 +113,7 @@ func update(ctx context.Context, opts Options) error {
 		return err
 	}
 
-	next, err := extractBinary(archivePath, filepath.Dir(exe))
+	next, err := extractBinary(archivePath, targetDir)
 	if err != nil {
 		return err
 	}
@@ -122,6 +132,17 @@ func update(ctx context.Context, opts Options) error {
 
 	fmt.Fprintf(opts.Stderr, "nx: updated %s -> %s\n", opts.CurrentVersion, rel.TagName)
 	return nil
+}
+
+func canWriteDir(dir string) bool {
+	f, err := os.CreateTemp(dir, ".nx-write-*")
+	if err != nil {
+		return false
+	}
+	name := f.Name()
+	_ = f.Close()
+	_ = os.Remove(name)
+	return true
 }
 
 func latestRelease(ctx context.Context, repo string) (release, error) {
@@ -288,7 +309,12 @@ func extractBinary(archivePath, targetDir string) (string, error) {
 
 		tmp, err := os.CreateTemp(targetDir, ".nx-update-*")
 		if err != nil {
-			return "", err
+			// Same-directory temp is preferred for atomic rename; fall back so
+			// callers can still surface a clear replace error if needed.
+			tmp, err = os.CreateTemp("", ".nx-update-*")
+			if err != nil {
+				return "", err
+			}
 		}
 		defer tmp.Close()
 
