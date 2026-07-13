@@ -3,6 +3,7 @@
 ## 0.1.2
 
 - Improved `nx token` load performance: harnesses and session files are parsed concurrently, Cursor SQLite databases open read-only in place (no temp copy unless the live file is locked), and parsed aggregates are cached under `~/.cache/nx/token` keyed by source file mtimes. Set `NX_TOKEN_NO_CACHE=1` to bypass the cache.
+- Improved JSONL and Cursor blob parsing throughput with `github.com/bytedance/sonic` on the hot decode paths.
 
 ## 0.1.1
 

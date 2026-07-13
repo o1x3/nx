@@ -70,7 +70,7 @@ func loadCursorCLIStore(path string) *Aggregate {
 			continue // non-message blob (binary payloads share the table)
 		}
 		var m cursorCLIBlob
-		if json.Unmarshal(data, &m) != nil {
+		if unmarshalJSON(data, &m) != nil {
 			continue
 		}
 		if m.Role != "user" && m.Role != "assistant" {
@@ -112,7 +112,7 @@ func cursorCLIReadMeta(db *sql.DB) cursorCLIMeta {
 			continue
 		}
 		var m cursorCLIMeta
-		if json.Unmarshal(raw, &m) == nil {
+		if unmarshalJSON(raw, &m) == nil {
 			return m
 		}
 	}
@@ -122,14 +122,14 @@ func cursorCLIReadMeta(db *sql.DB) cursorCLIMeta {
 // cursorCLIText extracts the concatenated text of a message content value.
 func cursorCLIText(raw json.RawMessage) string {
 	var s string
-	if json.Unmarshal(raw, &s) == nil {
+	if unmarshalJSON(raw, &s) == nil {
 		return s
 	}
 	var blocks []struct {
 		Type string `json:"type"`
 		Text string `json:"text"`
 	}
-	if json.Unmarshal(raw, &blocks) == nil {
+	if unmarshalJSON(raw, &blocks) == nil {
 		var sb strings.Builder
 		for _, b := range blocks {
 			if b.Type == "text" {
@@ -142,7 +142,7 @@ func cursorCLIText(raw json.RawMessage) string {
 	var obj struct {
 		Content json.RawMessage `json:"content"`
 	}
-	if json.Unmarshal(raw, &obj) == nil && len(obj.Content) > 0 {
+	if unmarshalJSON(raw, &obj) == nil && len(obj.Content) > 0 {
 		return cursorCLIText(obj.Content)
 	}
 	return ""

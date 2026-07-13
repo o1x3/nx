@@ -2,7 +2,6 @@ package core
 
 import (
 	"database/sql"
-	"encoding/json"
 	"io"
 	"os"
 	"path/filepath"
@@ -166,7 +165,7 @@ func scanCursorBubbles(a *Aggregate, db *sql.DB, seen map[string]bool, limit, of
 		}
 		seen[key] = true
 		var b cursorBubble
-		if json.Unmarshal(value, &b) != nil {
+		if unmarshalJSON(value, &b) != nil {
 			continue // malformed row; skip silently like the other parsers
 		}
 		noteCursorBubble(a, &b)

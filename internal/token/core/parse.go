@@ -91,7 +91,7 @@ func isToolResult(content json.RawMessage) bool {
 	var blocks []struct {
 		Type string `json:"type"`
 	}
-	if json.Unmarshal(content, &blocks) != nil {
+	if unmarshalJSON(content, &blocks) != nil {
 		return false // string content => a genuine prompt
 	}
 	for _, b := range blocks {
@@ -127,7 +127,7 @@ func parseClaudeFile(path string) *Aggregate {
 	seen := map[string]bool{}
 	scanLines(path, func(b []byte) {
 		var l claudeLine
-		if json.Unmarshal(b, &l) != nil {
+		if unmarshalJSON(b, &l) != nil {
 			return
 		}
 		t := parseTime(l.Timestamp)
@@ -210,7 +210,7 @@ func parseCodexFile(path string) *Aggregate {
 	)
 	scanLines(path, func(b []byte) {
 		var l codexLine
-		if json.Unmarshal(b, &l) != nil {
+		if unmarshalJSON(b, &l) != nil {
 			return
 		}
 		ts := parseTime(l.Timestamp)
@@ -219,12 +219,12 @@ func parseCodexFile(path string) *Aggregate {
 			var p struct {
 				Model string `json:"model"`
 			}
-			if json.Unmarshal(l.Payload, &p) == nil && p.Model != "" {
+			if unmarshalJSON(l.Payload, &p) == nil && p.Model != "" {
 				model = p.Model
 			}
 		case "event_msg":
 			var p codexEventMsg
-			if json.Unmarshal(l.Payload, &p) != nil {
+			if unmarshalJSON(l.Payload, &p) != nil {
 				return
 			}
 			switch p.Type {
@@ -295,7 +295,7 @@ func parsePiFile(path string) *Aggregate {
 	var lastModel string
 	scanLines(path, func(b []byte) {
 		var l piLine
-		if json.Unmarshal(b, &l) != nil {
+		if unmarshalJSON(b, &l) != nil {
 			return
 		}
 		switch l.Type {
