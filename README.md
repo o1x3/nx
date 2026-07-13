@@ -85,6 +85,8 @@ Interactive keys: `←`/`→` switch harness, `tab`/`⇧tab` cycle views, `1`/`2
 
 Released builds check GitHub for the latest release at most once per day. If a newer release exists for your OS and CPU, `nx` downloads it and replaces the current binary in place.
 
+Auto-update needs a writable install directory. Default `/usr/local/bin` installs (often via `sudo`) skip auto-update quietly; re-run the installer to upgrade, or install to a user-writable path such as `~/.local/bin`.
+
 Disable update checks:
 
 ```sh

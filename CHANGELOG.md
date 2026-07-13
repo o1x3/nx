@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.3
+
+- Fixed self-update noise on root-owned installs (e.g. `/usr/local/bin`): when the install directory is not writable, the daily update check now skips quietly instead of printing `permission denied`.
+
 ## 0.1.2
 
 - Improved `nx token` load performance: harnesses and session files are parsed concurrently, Cursor SQLite databases open read-only in place (no temp copy unless the live file is locked), and parsed aggregates are cached under `~/.cache/nx/token` keyed by source file mtimes. Set `NX_TOKEN_NO_CACHE=1` to bypass the cache.
