@@ -19,10 +19,33 @@ import (
 
 // loadCursor loads Cursor usage from both the IDE and the CLI.
 func loadCursor() *Aggregate {
-	a := newAggregate(Cursor)
-	loadCursorIDE(a)
-	loadCursorCLI(a)
-	return a
+	paths := cursorPaths()
+	return loadCached(Cursor, paths, func() *Aggregate {
+		a := newAggregate(Cursor)
+		loadCursorIDE(a)
+		part := loadParts(cursorCLIPaths(), loadCursorCLIStore)
+		if part != nil {
+			a.Merge(part)
+		}
+		return a
+	})
+}
+
+func cursorPaths() []string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return cursorCLIPaths()
+	}
+	paths := []string{
+		filepath.Join(home, "Library", "Application Support", "Cursor", "User", "globalStorage", "state.vscdb"),
+		filepath.Join(home, ".config", "Cursor", "User", "globalStorage", "state.vscdb"),
+	}
+	paths = append(paths, cursorCLIPaths()...)
+	return paths
+}
+
+func cursorCLIPaths() []string {
+	return homeGlob(".cursor/chats/*/*/store.db")
 }
 
 // ---- Cursor IDE: <config>/Cursor/User/globalStorage/state.vscdb ----
@@ -88,7 +111,7 @@ func loadCursorIDE(a *Aggregate) {
 }
 
 func loadCursorDB(a *Aggregate, path string, seen map[string]bool) {
-	db, cleanup, err := openDBCopy(path)
+	db, cleanup, err := openDB(path)
 	if err != nil {
 		return
 	}
@@ -195,6 +218,22 @@ func estTokens(text string) int64 {
 }
 
 // ---- shared SQLite helpers ----
+
+// openDB opens an SQLite database read-only. Cursor keeps its databases in WAL
+// mode while running; WAL readers don't block writers, so we open the live
+// file directly and only fall back to a private copy when that fails (e.g.
+// an exclusive lock on some platforms).
+func openDB(path string) (*sql.DB, func(), error) {
+	uri := "file:" + filepath.ToSlash(path) + "?mode=ro"
+	db, err := sql.Open("sqlite", uri)
+	if err == nil {
+		if err := db.Ping(); err == nil {
+			return db, func() { db.Close() }, nil
+		}
+		db.Close()
+	}
+	return openDBCopy(path)
+}
 
 // openDBCopy copies an SQLite database (plus -wal/-shm siblings when present)
 // into a temp directory and opens the copy read-only. Cursor keeps its

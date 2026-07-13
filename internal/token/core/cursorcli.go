@@ -28,18 +28,11 @@ type cursorCLIBlob struct {
 	Content json.RawMessage `json:"content"`
 }
 
-func loadCursorCLI(a *Aggregate) {
-	files := homeGlob(".cursor/chats/*/*/store.db")
-	a.Sessions += len(files)
-	for _, f := range files {
-		loadCursorCLIStore(a, f)
-	}
-}
-
-func loadCursorCLIStore(a *Aggregate, path string) {
-	db, cleanup, err := openDBCopy(path)
+func loadCursorCLIStore(path string) *Aggregate {
+	a := newAggregate(Cursor)
+	db, cleanup, err := openDB(path)
 	if err != nil {
-		return
+		return nil
 	}
 	defer cleanup()
 
@@ -65,7 +58,7 @@ func loadCursorCLIStore(a *Aggregate, path string) {
 
 	rows, err := db.Query(`SELECT data FROM blobs`)
 	if err != nil {
-		return
+		return nil
 	}
 	defer rows.Close()
 	for rows.Next() {
@@ -98,6 +91,8 @@ func loadCursorCLIStore(a *Aggregate, path string) {
 			a.addModelOnDay(dayOf(t), model, tok)
 		}
 	}
+	a.Sessions = 1
+	return a
 }
 
 // cursorCLIReadMeta finds and decodes the hex-encoded JSON meta row.
