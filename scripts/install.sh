@@ -2,7 +2,13 @@
 set -eu
 
 repo="${NX_REPO:-o1x3/nx}"
-install_dir="${NX_INSTALL_DIR:-/usr/local/bin}"
+# Prefer a user-writable bindir so runtime self-update can replace the binary.
+# /usr/local/bin is often root-owned and breaks in-place updates.
+if [ -n "${NX_INSTALL_DIR:-}" ]; then
+  install_dir="$NX_INSTALL_DIR"
+else
+  install_dir="${HOME}/.local/bin"
+fi
 binary="${install_dir}/nx"
 
 os="$(uname -s | tr '[:upper:]' '[:lower:]')"
@@ -102,19 +108,36 @@ fi
 tar -xzf "$tmp/$archive_name" -C "$tmp" nx
 chmod 0755 "$tmp/nx"
 
-if [ ! -d "$install_dir" ]; then
-  if mkdir -p "$install_dir" 2>/dev/null; then
-    :
-  else
-    sudo mkdir -p "$install_dir"
-  fi
+if ! mkdir -p "$install_dir" 2>/dev/null; then
+  echo "cannot create install directory: $install_dir" >&2
+  echo "set NX_INSTALL_DIR to a writable path (default: \$HOME/.local/bin)" >&2
+  exit 1
 fi
 
-if install -m 0755 "$tmp/nx" "$binary" 2>/dev/null; then
-  :
-else
-  sudo install -m 0755 "$tmp/nx" "$binary"
-  sudo chown "$(id -u):$(id -g)" "$binary" || true
+# Refuse root-owned / non-writable bindirs: self-update needs to write beside the binary.
+probe="$install_dir/.nx-install-write-$$"
+if ! ( : >"$probe" ) 2>/dev/null; then
+  echo "install directory is not writable: $install_dir" >&2
+  echo "nx self-update requires a user-writable bindir; try:" >&2
+  echo "  curl -fsSL https://raw.githubusercontent.com/${repo}/main/scripts/install.sh | NX_INSTALL_DIR=\"\$HOME/.local/bin\" sh" >&2
+  exit 1
+fi
+rm -f "$probe"
+
+if ! install -m 0755 "$tmp/nx" "$binary" 2>/dev/null; then
+  # BusyBox / minimal environments may lack install(1).
+  if ! cp "$tmp/nx" "$binary"; then
+    echo "failed to install nx to $binary" >&2
+    exit 1
+  fi
+  chmod 0755 "$binary"
 fi
 
 echo "installed nx to $binary"
+
+case ":${PATH}:" in
+  *":${install_dir}:"*) ;;
+  *)
+    echo "note: ${install_dir} is not on PATH; add it so \`nx\` resolves after install" >&2
+    ;;
+esac

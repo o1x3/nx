@@ -8,12 +8,12 @@
 curl -fsSL https://raw.githubusercontent.com/o1x3/nx/main/scripts/install.sh | sh
 ```
 
-By default this installs to `/usr/local/bin/nx`, which is usually on `PATH` on macOS and common Linux setups.
+By default this installs to `~/.local/bin/nx` (user-writable) so daily self-update can replace the binary in place. Add `~/.local/bin` to your `PATH` if it is not already there.
 
-Override the install directory when needed:
+Override the install directory when needed (must be writable by your user; root-owned paths like `/usr/local/bin` break self-update):
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/o1x3/nx/main/scripts/install.sh | NX_INSTALL_DIR="$HOME/.local/bin" sh
+curl -fsSL https://raw.githubusercontent.com/o1x3/nx/main/scripts/install.sh | NX_INSTALL_DIR="$HOME/bin" sh
 ```
 
 ## Commands
@@ -85,7 +85,7 @@ Interactive keys: `←`/`→` switch harness, `tab`/`⇧tab` cycle views, `1`/`2
 
 Released builds check GitHub for the latest release at most once per day. If a newer release exists for your OS and CPU, `nx` downloads it and replaces the current binary in place.
 
-Auto-update needs a writable install directory. Default `/usr/local/bin` installs (often via `sudo`) skip auto-update quietly; re-run the installer to upgrade, or install to a user-writable path such as `~/.local/bin`.
+Auto-update needs a writable install directory (the default `~/.local/bin` install). If `nx` lives in a root-owned path, the update check skips quietly; re-run the installer to move to a writable bindir.
 
 Disable update checks:
 
