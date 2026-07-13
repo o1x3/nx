@@ -4,6 +4,7 @@
 
 - Fixed self-update noise on root-owned installs (e.g. `/usr/local/bin`): when the install directory is not writable, the daily update check now skips quietly instead of printing `permission denied`.
 - Changed the curl installer default to `~/.local/bin` (no `sudo`) so new installs stay user-writable and self-update works; refuses non-writable `NX_INSTALL_DIR` targets instead of escalating with `sudo`.
+- Installer now ensures the install bindir is on `PATH` via the user shell profile, and re-running it migrates an older `/usr/local/bin/nx` install by removing the stale binary.
 
 ## 0.1.2
 
