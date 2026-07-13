@@ -41,8 +41,8 @@ func TestLoadCursorCLI(t *testing.T) {
 		"\x00\x01binary garbage",       // non-JSON blob, skipped
 	)
 
-	a := newAggregate(Cursor)
-	loadCursorCLI(a)
+	t.Setenv("NX_TOKEN_NO_CACHE", "1")
+	a := Load(Cursor)
 
 	if a.Sessions != 1 {
 		t.Errorf("Sessions = %d, want 1 (one store.db)", a.Sessions)
@@ -89,8 +89,8 @@ func TestLoadCursorCLISecondsAndMtime(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	a := newAggregate(Cursor)
-	loadCursorCLI(a)
+	t.Setenv("NX_TOKEN_NO_CACHE", "1")
+	a := Load(Cursor)
 
 	if a.Sessions != 2 {
 		t.Errorf("Sessions = %d, want 2", a.Sessions)

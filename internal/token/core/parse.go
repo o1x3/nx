@@ -91,7 +91,7 @@ func isToolResult(content json.RawMessage) bool {
 	var blocks []struct {
 		Type string `json:"type"`
 	}
-	if json.Unmarshal(content, &blocks) != nil {
+	if unmarshalJSON(content, &blocks) != nil {
 		return false // string content => a genuine prompt
 	}
 	for _, b := range blocks {
@@ -102,48 +102,61 @@ func isToolResult(content json.RawMessage) bool {
 	return false
 }
 
+func claudePaths() []string {
+	return homeGlob(".claude/projects/*/*.jsonl")
+}
+
 func loadClaude() *Aggregate {
+	files := claudePaths()
+	return loadCached(Claude, files, func() *Aggregate {
+		part := loadParts(files, parseClaudeFile)
+		a := newAggregate(Claude)
+		a.Sessions = len(files)
+		if part != nil {
+			a.Merge(part)
+		}
+		return a
+	})
+}
+
+// parseClaudeFile reads one session JSONL. One assistant turn is written as
+// several lines (one per content block), each repeating the same cumulative
+// message.usage. Dedupe by message id + request id so usage is tallied once.
+func parseClaudeFile(path string) *Aggregate {
 	a := newAggregate(Claude)
-	files := homeGlob(".claude/projects/*/*.jsonl")
-	a.Sessions = len(files)
-	// One assistant turn is written as several JSONL lines (one per content
-	// block), each repeating the same cumulative message.usage. Dedupe by
-	// message id + request id so usage and counts are tallied once per turn.
 	seen := map[string]bool{}
-	for _, f := range files {
-		scanLines(f, func(b []byte) {
-			var l claudeLine
-			if json.Unmarshal(b, &l) != nil {
-				return
+	scanLines(path, func(b []byte) {
+		var l claudeLine
+		if unmarshalJSON(b, &l) != nil {
+			return
+		}
+		t := parseTime(l.Timestamp)
+		switch l.Type {
+		case "user":
+			if isToolResult(l.Message.Content) {
+				return // tool output, not a human message
 			}
-			t := parseTime(l.Timestamp)
-			switch l.Type {
-			case "user":
-				if isToolResult(l.Message.Content) {
-					return // tool output, not a human message
+			a.noteMessage(t, 0)
+		case "assistant":
+			if id := l.Message.ID; id != "" {
+				key := id + "|" + l.RequestID
+				if seen[key] {
+					return // duplicate content-block line of the same turn
 				}
-				a.noteMessage(t, 0)
-			case "assistant":
-				if id := l.Message.ID; id != "" {
-					key := id + "|" + l.RequestID
-					if seen[key] {
-						return // duplicate content-block line of the same turn
-					}
-					seen[key] = true
-				}
-				u := l.Message.Usage
-				tok := u.InputTokens + u.OutputTokens + u.CacheReadInputTokens + u.CacheCreationInputTokens
-				a.noteMessage(t, tok)
-				a.InputTokens += u.InputTokens
-				a.OutputTokens += u.OutputTokens
-				a.CacheReadTokens += u.CacheReadInputTokens
-				a.CacheWriteTokens += u.CacheCreationInputTokens
-				if m := l.Message.Model; m != "" && m != "<synthetic>" {
-					a.addModelOnDay(dayOf(t), m, tok)
-				}
+				seen[key] = true
 			}
-		})
-	}
+			u := l.Message.Usage
+			tok := u.InputTokens + u.OutputTokens + u.CacheReadInputTokens + u.CacheCreationInputTokens
+			a.noteMessage(t, tok)
+			a.InputTokens += u.InputTokens
+			a.OutputTokens += u.OutputTokens
+			a.CacheReadTokens += u.CacheReadInputTokens
+			a.CacheWriteTokens += u.CacheCreationInputTokens
+			if m := l.Message.Model; m != "" && m != "<synthetic>" {
+				a.addModelOnDay(dayOf(t), m, tok)
+			}
+		}
+	})
 	return a
 }
 
@@ -169,63 +182,75 @@ type codexEventMsg struct {
 	} `json:"info"`
 }
 
+func codexPaths() []string {
+	return homeGlob(".codex/sessions/*/*/*/*.jsonl")
+}
+
 func loadCodex() *Aggregate {
+	files := codexPaths()
+	return loadCached(Codex, files, func() *Aggregate {
+		part := loadParts(files, parseCodexFile)
+		a := newAggregate(Codex)
+		a.Sessions = len(files)
+		if part != nil {
+			a.Merge(part)
+		}
+		return a
+	})
+}
+
+// parseCodexFile reads one rollout JSONL. Codex token_count events carry the
+// session-cumulative totals. We attribute the *delta* of each event to that
+// event's day and the model active at the time.
+func parseCodexFile(path string) *Aggregate {
 	a := newAggregate(Codex)
-	files := homeGlob(".codex/sessions/*/*/*/*.jsonl")
-	a.Sessions = len(files)
-	for _, f := range files {
-		// Codex token_count events carry the session-cumulative totals. We
-		// attribute the *delta* of each event to that event's day and the model
-		// active at the time, so windowed totals and the heatmap reflect when
-		// the work actually happened (sessions can span multiple days/models).
-		var (
-			model                            string
-			prevIn, prevCach, prevOut, prevT int64
-		)
-		scanLines(f, func(b []byte) {
-			var l codexLine
-			if json.Unmarshal(b, &l) != nil {
+	var (
+		model                            string
+		prevIn, prevCach, prevOut, prevT int64
+	)
+	scanLines(path, func(b []byte) {
+		var l codexLine
+		if unmarshalJSON(b, &l) != nil {
+			return
+		}
+		ts := parseTime(l.Timestamp)
+		switch l.Type {
+		case "turn_context":
+			var p struct {
+				Model string `json:"model"`
+			}
+			if unmarshalJSON(l.Payload, &p) == nil && p.Model != "" {
+				model = p.Model
+			}
+		case "event_msg":
+			var p codexEventMsg
+			if unmarshalJSON(l.Payload, &p) != nil {
 				return
 			}
-			ts := parseTime(l.Timestamp)
-			switch l.Type {
-			case "turn_context":
-				var p struct {
-					Model string `json:"model"`
-				}
-				if json.Unmarshal(l.Payload, &p) == nil && p.Model != "" {
-					model = p.Model
-				}
-			case "event_msg":
-				var p codexEventMsg
-				if json.Unmarshal(l.Payload, &p) != nil {
+			switch p.Type {
+			case "user_message", "agent_message":
+				a.noteMessage(ts, 0)
+			case "token_count":
+				if p.Info == nil {
 					return
 				}
-				switch p.Type {
-				case "user_message", "agent_message":
-					a.noteMessage(ts, 0)
-				case "token_count":
-					if p.Info == nil {
-						return
-					}
-					tt := p.Info.TotalTokenUsage
-					// deltas vs the running cumulative; clamp negatives (a
-					// rolled-back thread can lower the totals).
-					dIn := nonneg(tt.InputTokens - prevIn)
-					dCach := nonneg(tt.CachedInputTokens - prevCach)
-					dOut := nonneg(tt.OutputTokens - prevOut)
-					dTot := nonneg(tt.TotalTokens - prevT)
-					prevIn, prevCach, prevOut, prevT = tt.InputTokens, tt.CachedInputTokens, tt.OutputTokens, tt.TotalTokens
+				tt := p.Info.TotalTokenUsage
+				// deltas vs the running cumulative; clamp negatives (a
+				// rolled-back thread can lower the totals).
+				dIn := nonneg(tt.InputTokens - prevIn)
+				dCach := nonneg(tt.CachedInputTokens - prevCach)
+				dOut := nonneg(tt.OutputTokens - prevOut)
+				dTot := nonneg(tt.TotalTokens - prevT)
+				prevIn, prevCach, prevOut, prevT = tt.InputTokens, tt.CachedInputTokens, tt.OutputTokens, tt.TotalTokens
 
-					a.InputTokens += nonneg(dIn - dCach)
-					a.CacheReadTokens += dCach
-					a.OutputTokens += dOut
-					a.addTokensOnDay(ts, dTot)
-					a.addModelTokensOnDay(dayOf(ts), model, dTot)
-				}
+				a.InputTokens += nonneg(dIn - dCach)
+				a.CacheReadTokens += dCach
+				a.OutputTokens += dOut
+				a.addTokensOnDay(ts, dTot)
+				a.addModelTokensOnDay(dayOf(ts), model, dTot)
 			}
-		})
-	}
+		}
+	})
 	return a
 }
 
@@ -248,89 +273,63 @@ type piLine struct {
 	} `json:"message"`
 }
 
+func piPaths() []string {
+	return homeGlob(".pi/agent/sessions/*/*.jsonl")
+}
+
 func loadPi() *Aggregate {
+	files := piPaths()
+	return loadCached(Pi, files, func() *Aggregate {
+		part := loadParts(files, parsePiFile)
+		a := newAggregate(Pi)
+		a.Sessions = len(files)
+		if part != nil {
+			a.Merge(part)
+		}
+		return a
+	})
+}
+
+func parsePiFile(path string) *Aggregate {
 	a := newAggregate(Pi)
-	files := homeGlob(".pi/agent/sessions/*/*.jsonl")
-	a.Sessions = len(files)
-	for _, f := range files {
-		var lastModel string
-		scanLines(f, func(b []byte) {
-			var l piLine
-			if json.Unmarshal(b, &l) != nil {
+	var lastModel string
+	scanLines(path, func(b []byte) {
+		var l piLine
+		if unmarshalJSON(b, &l) != nil {
+			return
+		}
+		switch l.Type {
+		case "model_change":
+			if l.ModelID != "" {
+				lastModel = l.ModelID
+			}
+		case "message":
+			// Count only real conversational turns; skip tool results.
+			role := l.Message.Role
+			if role != "user" && role != "assistant" {
 				return
 			}
-			switch l.Type {
-			case "model_change":
-				if l.ModelID != "" {
-					lastModel = l.ModelID
+			u := l.Message.Usage
+			tok := u.Input + u.Output + u.CacheRead + u.CacheWrite
+			if tok == 0 {
+				tok = u.TotalTokens
+			}
+			t := parseTime(l.Timestamp)
+			a.noteMessage(t, tok)
+			a.InputTokens += u.Input
+			a.OutputTokens += u.Output
+			a.CacheReadTokens += u.CacheRead
+			a.CacheWriteTokens += u.CacheWrite
+			if role == "assistant" {
+				m := l.Message.Model
+				if m == "" {
+					m = lastModel
 				}
-			case "message":
-				// Count only real conversational turns; skip tool results.
-				role := l.Message.Role
-				if role != "user" && role != "assistant" {
-					return
-				}
-				u := l.Message.Usage
-				tok := u.Input + u.Output + u.CacheRead + u.CacheWrite
-				if tok == 0 {
-					tok = u.TotalTokens
-				}
-				t := parseTime(l.Timestamp)
-				a.noteMessage(t, tok)
-				a.InputTokens += u.Input
-				a.OutputTokens += u.Output
-				a.CacheReadTokens += u.CacheRead
-				a.CacheWriteTokens += u.CacheWrite
-				if role == "assistant" {
-					m := l.Message.Model
-					if m == "" {
-						m = lastModel
-					}
-					if m != "" {
-						a.addModelOnDay(dayOf(t), m, tok)
-					}
+				if m != "" {
+					a.addModelOnDay(dayOf(t), m, tok)
 				}
 			}
-		})
-	}
+		}
+	})
 	return a
-}
-
-// Load returns the aggregate for a single harness key.
-func Load(harness string) *Aggregate {
-	switch harness {
-	case Claude:
-		return loadClaude()
-	case Codex:
-		return loadCodex()
-	case Pi:
-		return loadPi()
-	case Cursor:
-		return loadCursor()
-	default:
-		return LoadAll()
-	}
-}
-
-// LoadAll loads and merges every harness.
-func LoadAll() *Aggregate {
-	a := newAggregate(Combined)
-	for _, h := range Harnesses {
-		a.Merge(Load(h))
-	}
-	return a
-}
-
-// LoadEach loads every concrete harness once and returns them keyed by
-// harness name, with the merged Combined aggregate under Combined.
-func LoadEach() map[string]*Aggregate {
-	m := make(map[string]*Aggregate, len(Harnesses)+1)
-	all := newAggregate(Combined)
-	for _, h := range Harnesses {
-		a := Load(h)
-		m[h] = a
-		all.Merge(a)
-	}
-	m[Combined] = all
-	return m
 }

@@ -75,6 +75,7 @@ Environment:
 
 - `NX_BACKGROUND=light|dark` overrides terminal background detection.
 - `NX_TRUECOLOR=1` forces 24-bit colour (useful for capture tools). Piped output is plain text.
+- `NX_TOKEN_NO_CACHE=1` bypasses the on-disk aggregate cache for `nx token` (useful when debugging or forcing a full re-scan).
 
 Exit codes: `0` ok · `2` bad arguments · `3` no usage for the selection (output modes only, so it composes in scripts and CI).
 
