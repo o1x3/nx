@@ -25,54 +25,42 @@ case "$os" in
   *) echo "unsupported OS: $os" >&2; exit 1 ;;
 esac
 
+download() {
+  curl \
+    -fsSL \
+    --retry 3 \
+    --retry-delay 1 \
+    --retry-all-errors \
+    "$@"
+}
+
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
-api="https://api.github.com/repos/${repo}/releases/latest"
-release_json="$tmp/release.json"
-curl -fsSL "$api" -o "$release_json"
+latest_url="https://github.com/${repo}/releases/latest"
 
-asset_url="$(
-  awk -v os="$os" -v arch="$arch" '
-    /browser_download_url/ {
-      url=$2
-      gsub(/[",]/, "", url)
-      low=tolower(url)
-      if (index(low, os) && index(low, arch) && low ~ /\.tar\.gz$/) {
-        print url
-        exit
-      }
-    }
-  ' "$release_json"
+release_url="$(
+  download -I -o /dev/null -w '%{url_effective}' "$latest_url"
 )"
 
-checksum_url="$(
-  awk '
-    /browser_download_url/ {
-      url=$2
-      gsub(/[",]/, "", url)
-      low=tolower(url)
-      if (low ~ /checksums\.txt$/) {
-        print url
-        exit
-      }
-    }
-  ' "$release_json"
-)"
+case "$release_url" in
+  */releases/tag/*)
+    version="${release_url##*/}"
+    ;;
+  *)
+    echo "could not determine latest nx release from: $release_url" >&2
+    exit 1
+    ;;
+esac
 
-if [ -z "$asset_url" ]; then
-  echo "could not find nx release asset for ${os}/${arch}" >&2
-  exit 1
-fi
+archive_name="nx_${os}_${arch}.tar.gz"
+release_base="https://github.com/${repo}/releases/download/${version}"
 
-if [ -z "$checksum_url" ]; then
-  echo "could not find checksums.txt release asset" >&2
-  exit 1
-fi
+asset_url="${release_base}/${archive_name}"
+checksum_url="${release_base}/checksums.txt"
 
-archive_name="$(basename "$asset_url")"
-curl -fsSL "$asset_url" -o "$tmp/$archive_name"
-curl -fsSL "$checksum_url" -o "$tmp/checksums.txt"
+download "$asset_url" -o "$tmp/$archive_name"
+download "$checksum_url" -o "$tmp/checksums.txt"
 
 expected="$(
   awk -v name="$archive_name" '
