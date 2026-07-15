@@ -18,6 +18,20 @@ Override the install directory when needed (must be writable by your user; root-
 curl -fsSL https://raw.githubusercontent.com/o1x3/nx/main/scripts/install.sh | NX_INSTALL_DIR="$HOME/bin" sh
 ```
 
+## Help
+
+Discover commands by nesting:
+
+```sh
+nx help                 # top-level commands
+nx help git             # git subcommands
+nx help git stat        # git stat details
+nx help token           # full token reference
+nx help token harness   # one token topic
+```
+
+Topics under `nx help token`: `harness`, `range`, `view`, `output`, `flags`, `env`, `exit`, `examples` (also `nx help token topics`). Domain-local forms work too: `nx git help`, `nx git help stat`, `nx token --help`.
+
 ## Commands
 
 ```sh

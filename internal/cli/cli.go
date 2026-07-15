@@ -27,14 +27,12 @@ func New(info BuildInfo) App {
 
 func (a App) Run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	if len(args) == 0 {
-		fmt.Fprint(stdout, helpText())
-		return nil
+		return a.runHelp(nil, stdout)
 	}
 
 	switch args[0] {
 	case "help", "-h", "--help":
-		fmt.Fprint(stdout, helpText())
-		return nil
+		return a.runHelp(args[1:], stdout)
 	case "version", "-v", "--version":
 		fmt.Fprintf(stdout, "nx %s (%s, %s)\n", a.info.Version, a.info.Commit, a.info.Date)
 		return nil
@@ -43,19 +41,18 @@ func (a App) Run(ctx context.Context, args []string, stdout, stderr io.Writer) e
 	case "token", "tokens":
 		return a.runToken(ctx, args[1:], stdout)
 	default:
-		return fmt.Errorf("unknown command %q\n\n%s", args[0], strings.TrimSpace(helpText()))
+		return ExitError{Code: 2, Err: fmt.Errorf("unknown command %q\n\n%s", args[0], strings.TrimSpace(helpText()))}
 	}
 }
 
 func (a App) runGit(ctx context.Context, args []string, stdout io.Writer) error {
 	if len(args) == 0 {
-		return fmt.Errorf("missing git subcommand\n\n%s", strings.TrimSpace(gitHelpText()))
+		return ExitError{Code: 2, Err: fmt.Errorf("missing git subcommand\n\n%s", strings.TrimSpace(gitHelpText()))}
 	}
 
 	switch args[0] {
 	case "help", "-h", "--help":
-		fmt.Fprint(stdout, gitHelpText())
-		return nil
+		return a.runHelp(append([]string{"git"}, args[1:]...), stdout)
 	case "stat", "stats":
 		opts, folders, err := parseGitStatArgs(args[1:])
 		if err != nil {
@@ -70,7 +67,7 @@ func (a App) runGit(ctx context.Context, args []string, stdout io.Writer) error 
 		fmt.Fprint(stdout, render.GitStats(stats))
 		return nil
 	default:
-		return fmt.Errorf("unknown git subcommand %q\n\n%s", args[0], strings.TrimSpace(gitHelpText()))
+		return ExitError{Code: 2, Err: fmt.Errorf("unknown git subcommand %q\n\n%s", args[0], strings.TrimSpace(gitHelpText()))}
 	}
 }
 
@@ -108,7 +105,7 @@ func parseGitStatArgs(args []string) (gitstat.CollectOptions, []string, error) {
 	}
 
 	if len(folders) == 0 {
-		return gitstat.CollectOptions{}, nil, fmt.Errorf("usage: nx git stat [--jobs <n>] <folder> [folder...]")
+		return gitstat.CollectOptions{}, nil, ExitError{Code: 2, Err: fmt.Errorf("usage: nx git stat [--jobs <n>] <folder> [folder...]\n\nTry: nx help git stat")}
 	}
 
 	return opts, folders, nil
@@ -120,26 +117,4 @@ func parsePositiveInt(raw, name string) (int, error) {
 		return 0, fmt.Errorf("%s must be a positive integer", name)
 	}
 	return parsed, nil
-}
-
-func helpText() string {
-	return `nx is a personal development CLI.
-
-Usage:
-  nx <command> [args]
-
-Commands:
-  git stat [--jobs <n>] <folder> [folder...]   Show branch diff stats against the repo default branch
-  token [harness] [range] [view]  Token stats across AI coding harnesses (see nx token --help)
-  version                         Show build version
-  help                            Show help
-
-`
-}
-
-func gitHelpText() string {
-	return `Usage:
-  nx git stat [--jobs <n>] <folder> [folder...]
-
-`
 }
