@@ -5,6 +5,7 @@
 - Added nested help: `nx help [command...]` drills into command detail (`nx help git`, `nx help git stat`, `nx help token`, `nx help token harness`, …). Unknown help paths exit `2` and show the nearest help page.
 - Expanded `nx help git` / `nx help git stat` with subcommand lists, options, and examples; `nx git help [stat]` matches the same path.
 - Token help links to topic pages (`harness`, `range`, `view`, `output`, `flags`, `env`, `exit`, `examples`) via `nx help token <topic>`.
+- Documented the nested-help precedent in `AGENTS.md` so new commands keep the help tree, tests, and README Help section updated together.
 
 ## 0.1.3
 
