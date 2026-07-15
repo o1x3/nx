@@ -90,7 +90,7 @@ func parseTokenArgs(args []string) (tokenOptions, error) {
 			o.compare = true
 
 		default:
-			return o, ExitError{Code: 2, Err: fmt.Errorf("unknown argument %q (try: nx token --help)", a)}
+			return o, ExitError{Code: 2, Err: fmt.Errorf("unknown argument %q (try: nx help token)", a)}
 		}
 	}
 	return o, nil
@@ -259,6 +259,7 @@ func tokenHelpText() string {
 USAGE
   nx token [harness] [range] [tab] [-i]
   nx token [harness] [range] (json | quiet | compare)
+  nx help token [topic]
 
 HARNESS   (default: all)
   claude            Claude Code        ~/.claude
@@ -304,5 +305,8 @@ EXIT
 
 EXAMPLES
   nx token               nx token codex 7d cost      nx token claude punchcard
-  nx token all json      nx token 30d compare        nx token pi trend -i`
+  nx token all json      nx token 30d compare        nx token pi trend -i
+
+Nest help for one topic:
+  nx help token harness · range · view · output · flags · env · exit · examples`
 }

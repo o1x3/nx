@@ -36,6 +36,27 @@ nx git stat repo-a repo-b
 
 Do not add root-level shortcuts unless they are clearly permanent. Folder arguments are current-working-directory relative; discovery outside the provided paths belongs in a separate command.
 
+## Nested Help
+
+Help is a nestable discovery tree, not a single dump. Users learn the CLI by drilling in:
+
+```sh
+nx help                 # root: list top-level commands + nest hints
+nx help <domain>        # domain overview + subcommands/topics
+nx help <domain> <verb> # verb / topic detail
+```
+
+Examples that must keep working: `nx help git`, `nx help git stat`, `nx help token`, `nx help token harness`.
+
+Precedent (keep this current when commands change):
+
+- Help routing and text live in `internal/cli/help.go` (`helpFor` / `runHelp`). Root `help` / `-h` / `--help` forwards leftover args as the help path.
+- Every user-facing command path gets a matching `nx help …` page. Domain overviews list next-level nest targets; leaf pages cover usage, args, flags, and examples.
+- Large surfaces (like `token`) expose focused topic pages under `nx help <domain> <topic>` in addition to the full page. Prefer nesting over stuffing more into the root blurb.
+- Domain-local help should reuse the same tree (`nx git help [stat]`, `nx token --help`), not a divergent second copy of the docs.
+- Unknown help paths return `cli.ExitError` code `2` and print the nearest help page so users can recover by nesting up/down.
+- When you add or rename a command, subcommand, flag, or token topic: update the nested help text, the root nest hints if needed, `internal/cli/help_test.go`, and the README Help section in the same change.
+
 ## Adding Commands
 
 Each new command should add or extend one domain package under `internal/<domain>`, then expose only the routing surface through `internal/cli`.
@@ -44,8 +65,9 @@ The expected change shape is:
 
 - domain behavior in `internal/<domain>`
 - CLI routing in `internal/cli`
+- nested help pages in `internal/cli/help.go` (and topics when the surface is large)
 - rendering isolated from collection when terminal output is non-trivial
-- behavior tests for the domain package
+- behavior tests for the domain package (plus help-path coverage for new nest targets)
 - README command docs when user-facing behavior changes
 
 ## Release Model
