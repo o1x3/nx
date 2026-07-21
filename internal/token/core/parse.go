@@ -195,7 +195,10 @@ func claudeProjectRoots() []string {
 	if xdg == "" {
 		xdg = filepath.Join(home, ".config")
 	}
+	// Prefer XDG, but always also probe ~/.config/claude — Claude Code's
+	// documented path — in case XDG_CONFIG_HOME points elsewhere (CI, custom shells).
 	add(filepath.Join(xdg, "claude", "projects"))
+	add(filepath.Join(home, ".config", "claude", "projects"))
 	add(filepath.Join(home, ".claude", "projects"))
 	return roots
 }

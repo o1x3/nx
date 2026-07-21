@@ -179,6 +179,8 @@ func TestLoadClaudeSubagent(t *testing.T) {
 func TestLoadClaudeNestedCacheCreation(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("CLAUDE_CONFIG_DIR", "")
 	dir := filepath.Join(home, ".config", "claude", "projects", "p")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
@@ -190,6 +192,27 @@ func TestLoadClaudeNestedCacheCreation(t *testing.T) {
 	a := loadClaude()
 	if a.CacheWriteTokens != 50 {
 		t.Errorf("CacheWriteTokens = %d, want 50 (5m+1h nested)", a.CacheWriteTokens)
+	}
+}
+
+// TestLoadClaudeFindsHomeConfigDespiteXDG ensures ~/.config/claude is scanned
+// even when XDG_CONFIG_HOME points somewhere else (common on CI).
+func TestLoadClaudeFindsHomeConfigDespiteXDG(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "xdg-elsewhere"))
+	t.Setenv("CLAUDE_CONFIG_DIR", "")
+	dir := filepath.Join(home, ".config", "claude", "projects", "p")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	line := `{"type":"assistant","timestamp":"2026-06-20T10:00:00.000Z","requestId":"r1","message":{"id":"m1","role":"assistant","model":"claude-opus-4-8","stop_reason":"end_turn","usage":{"input_tokens":3,"output_tokens":2,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}`
+	if err := os.WriteFile(filepath.Join(dir, "s.jsonl"), []byte(line+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	a := loadClaude()
+	if a.InputTokens != 3 || a.OutputTokens != 2 {
+		t.Errorf("tokens = %d/%d, want 3/2 from ~/.config/claude despite XDG", a.InputTokens, a.OutputTokens)
 	}
 }
 
