@@ -172,7 +172,7 @@ Topics:
   view      overview, models, hours, punchcard, ...
   output    json / quiet / compare modes
   flags     -i / --help
-  env       NX_BACKGROUND / NX_TRUECOLOR / NX_TOKEN_NO_CACHE
+  env       NX_* / CLAUDE_CONFIG_DIR / CODEX_HOME / PI_AGENT_DIR
   exit      process exit codes
   examples  common invocations
 
@@ -191,9 +191,9 @@ func tokenTopicHelpText(topic string) string {
 		return `nx token — harnesses
 
 HARNESS   (default: all)
-  claude            Claude Code        ~/.claude
-  codex             OpenAI Codex       ~/.codex
-  pi                pi.dev             ~/.pi
+  claude            Claude Code        ~/.claude + ~/.config/claude
+  codex             OpenAI Codex       ~/.codex (sessions + archived)
+  pi                pi.dev             ~/.pi/agent/sessions
   cursor            Cursor IDE + CLI   state.vscdb + ~/.cursor
   all               every harness merged
 
@@ -204,8 +204,13 @@ Aliases:
   cursor: cursor-ide, cursor-cli, cursor-agent
   all:    combined, everything
 
-Cursor token figures are estimated from transcript size (~4 bytes/token)
-— Cursor doesn't store real token counts locally.
+Overrides: CLAUDE_CONFIG_DIR, CODEX_HOME, PI_AGENT_DIR (comma-separated paths).
+
+Claude counts final streaming chunks (stop_reason) and includes subagent
+JSONL. Codex prefers last_token_usage deltas and skips archived duplicates.
+Cursor prefers real bubble tokenCount when present; otherwise credits the
+composer context meter once per chat, else ~4 bytes/token. Local Cursor
+totals undercount the admin dashboard (cache/billed cumulatives are server-side).
 
 More: nx help token
 
@@ -275,6 +280,9 @@ ENV
   NX_BACKGROUND     light|dark — override terminal background detection
   NX_TRUECOLOR      set to force 24-bit colour
   NX_TOKEN_NO_CACHE set to bypass the on-disk aggregate cache
+  CLAUDE_CONFIG_DIR comma-separated Claude config roots (…/projects)
+  CODEX_HOME        comma-separated Codex homes
+  PI_AGENT_DIR      comma-separated pi-agent session dirs
 
 Piped output is plain text. NO_COLOR / CLICOLOR are respected.
 

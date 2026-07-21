@@ -231,3 +231,65 @@ func TestMergeTokensEstimated(t *testing.T) {
 		t.Error("idle estimated aggregate must not taint the merge")
 	}
 }
+
+// TestLoadCursorComposerMeter credits promptTokenBreakdown once when bubbles
+// report {0,0}, and skips chars/4 input estimates for that conversation.
+func TestLoadCursorComposerMeter(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	ts := time.Date(2026, 6, 20, 10, 0, 0, 0, time.Local)
+	meta := fmt.Sprintf(`{"createdAt":%q,"promptTokenBreakdown":{"totalUsedTokens":32000}}`, ts.Format(time.RFC3339))
+	user := fmt.Sprintf(`{"type":1,"text":%q,"createdAt":%q,"tokenCount":{"inputTokens":0,"outputTokens":0}}`,
+		strings.Repeat("u", 40), ts.Format(time.RFC3339))
+	asst := fmt.Sprintf(`{"type":2,"text":%q,"createdAt":%q,"tokenCount":{"inputTokens":0,"outputTokens":0},"modelInfo":{"modelName":"claude-4.5-sonnet"}}`,
+		strings.Repeat("a", 20), ts.Format(time.RFC3339))
+
+	makeSQLiteDB(t, cursorStatePath(home),
+		[]any{`CREATE TABLE cursorDiskKV (key TEXT PRIMARY KEY, value BLOB)`},
+		[]any{`INSERT INTO cursorDiskKV (key, value) VALUES (?, ?)`, "composerData:c1", meta},
+		[]any{`INSERT INTO cursorDiskKV (key, value) VALUES (?, ?)`, "bubbleId:c1:u1", user},
+		[]any{`INSERT INTO cursorDiskKV (key, value) VALUES (?, ?)`, "bubbleId:c1:a1", asst},
+	)
+
+	a := loadCursor()
+	if a.InputTokens != 32000 {
+		t.Errorf("InputTokens = %d, want 32000 from composer meter", a.InputTokens)
+	}
+	// Assistant text 20 bytes => 5 estimated output tokens.
+	if a.OutputTokens != 5 {
+		t.Errorf("OutputTokens = %d, want 5 (assistant text estimate)", a.OutputTokens)
+	}
+	if !a.TokensEstimated {
+		t.Error("TokensEstimated = false, want true (meter path)")
+	}
+	if a.Messages != 2 {
+		t.Errorf("Messages = %d, want 2", a.Messages)
+	}
+}
+
+// TestLoadCursorMeterDisabledByExplicitBubbles: real bubble tokens win and
+// the composer meter is not stacked on top.
+func TestLoadCursorMeterDisabledByExplicitBubbles(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	ts := time.Date(2026, 6, 20, 10, 0, 0, 0, time.Local)
+	meta := `{"createdAt":"2026-06-20T10:00:00Z","promptTokenBreakdown":{"totalUsedTokens":32000}}`
+	asst := fmt.Sprintf(`{"type":2,"text":"hi","createdAt":%q,"tokenCount":{"inputTokens":100,"outputTokens":50},"modelInfo":{"modelName":"gpt-5.2"}}`,
+		ts.Format(time.RFC3339))
+
+	makeSQLiteDB(t, cursorStatePath(home),
+		[]any{`CREATE TABLE cursorDiskKV (key TEXT PRIMARY KEY, value BLOB)`},
+		[]any{`INSERT INTO cursorDiskKV (key, value) VALUES (?, ?)`, "composerData:c1", meta},
+		[]any{`INSERT INTO cursorDiskKV (key, value) VALUES (?, ?)`, "bubbleId:c1:a1", asst},
+	)
+
+	a := loadCursor()
+	if a.InputTokens != 100 || a.OutputTokens != 50 {
+		t.Errorf("tokens = %d/%d, want 100/50 (explicit bubbles, no meter stack)", a.InputTokens, a.OutputTokens)
+	}
+	if a.TokensEstimated {
+		t.Error("TokensEstimated = true, want false")
+	}
+}

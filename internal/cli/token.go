@@ -262,14 +262,15 @@ USAGE
   nx help token [topic]
 
 HARNESS   (default: all)
-  claude            Claude Code        ~/.claude
-  codex             OpenAI Codex       ~/.codex
-  pi                pi.dev             ~/.pi
+  claude            Claude Code        ~/.claude + ~/.config/claude
+  codex             OpenAI Codex       ~/.codex (sessions + archived)
+  pi                pi.dev             ~/.pi/agent/sessions
   cursor            Cursor IDE + CLI   state.vscdb + ~/.cursor
   all               every harness merged
 
-  Cursor token figures are estimated from transcript size (~4 bytes/token)
-  — Cursor doesn't store real token counts locally.
+  Overrides: CLAUDE_CONFIG_DIR, CODEX_HOME, PI_AGENT_DIR.
+  Claude uses final streaming chunks; Cursor prefers real counts / composer
+  meter, else ~4 bytes/token (local Cursor undercounts the admin dashboard).
 
 RANGE     (default: alltime)
   alltime           lifetime
@@ -299,6 +300,8 @@ FLAGS
 ENV
   NX_BACKGROUND     light|dark — override terminal background detection
   NX_TRUECOLOR      set to force 24-bit colour
+  NX_TOKEN_NO_CACHE set to bypass the on-disk aggregate cache
+  CLAUDE_CONFIG_DIR / CODEX_HOME / PI_AGENT_DIR — harness data roots
 
 EXIT
   0 ok · 2 bad args · 3 no usage for the selection (output modes)
