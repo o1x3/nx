@@ -184,12 +184,15 @@ func TestTokensEstimatedMarkers(t *testing.T) {
 	}
 }
 
-// Every wordmark row must be exactly logoW cells so the banner's info column
+// Every icon row must be exactly logoW cells so the banner's info column
 // stays aligned beside it.
 func TestLogoArtUniformWidth(t *testing.T) {
-	for i, row := range logoArt {
-		if w := lipgloss.Width(row); w != logoW {
-			t.Errorf("logo row %d is %d cells wide, want logoW=%d", i, w, logoW)
+	for _, h := range append([]string{core.Combined}, core.Harnesses...) {
+		art := logoArtFor(h)
+		for i, row := range art {
+			if w := lipgloss.Width(row); w != logoW {
+				t.Errorf("%s logo row %d is %d cells wide, want logoW=%d", h, i, w, logoW)
+			}
 		}
 	}
 }

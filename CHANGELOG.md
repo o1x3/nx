@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.0
+
+- Replaced the shared `nx` wordmark on `nx token` banners with per-harness icon ASCII (nexus mark for combined; Claude asterisk, Codex brackets, Cursor cube, pi glyph).
+- Improved Claude Code counting: dual roots (`~/.claude` + `~/.config/claude`, `CLAUDE_CONFIG_DIR`), recursive JSONL including subagents, final-chunk dedup by `requestId`/`stop_reason`, nested cache-creation 5m/1h summed into cache writes.
+- Improved Codex counting: `CODEX_HOME`, `archived_sessions` with sessions-wins dedupe, prefer `last_token_usage`, skip duplicate cumulatives, fold reasoning into output.
+- Improved Cursor counting: prefer non-zero bubble `tokenCount`, else credit `promptTokenBreakdown.totalUsedTokens` / `contextTokensUsed` once per composer, else chars/4; document local undercount vs admin dashboard.
+- Added `PI_AGENT_DIR` override for pi-agent session roots.
+- Invalidated on-disk token aggregate cache (schema v2) after parser semantic changes.
+
 ## 0.1.4
 
 - Added nested help: `nx help [command...]` drills into command detail (`nx help git`, `nx help git stat`, `nx help token`, `nx help token harness`, …). Unknown help paths exit `2` and show the nearest help page.

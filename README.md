@@ -80,18 +80,19 @@ Data sources:
 
 | Harness | Source | Tokens |
 | --- | --- | --- |
-| Claude Code | `~/.claude/projects/*/*.jsonl` | real |
-| Codex | `~/.codex/sessions/**/rollout-*.jsonl` | real |
-| pi.dev | `~/.pi/agent/sessions/*/*.jsonl` | real |
-| Cursor (IDE + CLI) | `<config>/Cursor/User/globalStorage/state.vscdb` + `~/.cursor/chats/*/*/store.db` | estimated from transcript size (~4 bytes/token) |
+| Claude Code | `~/.claude/projects/**/*.jsonl` and `~/.config/claude/projects/**/*.jsonl` (incl. subagents) | real (final streaming chunk) |
+| Codex | `~/.codex/sessions/**` + `archived_sessions/` | real (`last_token_usage` / cumulative deltas) |
+| pi.dev | `~/.pi/agent/sessions/**/*.jsonl` | real |
+| Cursor (IDE + CLI) | `<config>/Cursor/User/globalStorage/state.vscdb` + `~/.cursor/chats/*/*/store.db` | bubble counts when present; else composer context meter; else ~4 bytes/token |
 
-Cursor does not store real token counts locally, so its figures are estimates. `<config>` is `~/Library/Application Support` on macOS and `~/.config` on Linux.
+Overrides: `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `PI_AGENT_DIR` (comma-separated). Cursor local totals undercount the admin dashboard (cache and billed cumulatives are server-side). `<config>` is `~/Library/Application Support` on macOS and `~/.config` on Linux.
 
 Environment:
 
 - `NX_BACKGROUND=light|dark` overrides terminal background detection.
 - `NX_TRUECOLOR=1` forces 24-bit colour (useful for capture tools). Piped output is plain text.
 - `NX_TOKEN_NO_CACHE=1` bypasses the on-disk aggregate cache for `nx token` (useful when debugging or forcing a full re-scan).
+- `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `PI_AGENT_DIR` override harness data roots.
 
 Exit codes: `0` ok · `2` bad arguments · `3` no usage for the selection (output modes only, so it composes in scripts and CI).
 

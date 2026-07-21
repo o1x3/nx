@@ -61,6 +61,10 @@ func writeStat(w io.Writer, path string) {
 	fmt.Fprintf(w, "%s:%d:%d\n", path, fi.Size(), fi.ModTime().UnixNano())
 }
 
+// aggregateCacheVersion is prefixed onto fingerprints so parser semantic
+// changes (dedup, meters, discovery) invalidate stale ~/.cache/nx/token gobes.
+const aggregateCacheVersion = "2"
+
 func loadCached(harness string, paths []string, load func() *Aggregate) *Aggregate {
 	if cacheDisabled() {
 		return load()
@@ -69,7 +73,7 @@ func loadCached(harness string, paths []string, load func() *Aggregate) *Aggrega
 	if dir == "" {
 		return load()
 	}
-	fp := statFingerprint(paths)
+	fp := aggregateCacheVersion + ":" + statFingerprint(paths)
 	aggPath := filepath.Join(dir, harness+".gob")
 	if a, ok := readAggregateCache(aggPath, fp); ok {
 		return a

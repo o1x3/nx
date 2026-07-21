@@ -68,21 +68,71 @@ func TabTitle(tab string) string {
 
 const (
 	contentW  = 72 // nominal width used only to right-align the range + footer
-	logoW     = 18 // neofetch logo column (ANSI-Shadow wordmark is exactly 18)
+	logoW     = 18 // neofetch logo column (every harness icon is exactly 18)
 	bannerGap = 3  // spaces between logo and info columns
 	infoW     = 33 // the key·value info column (values right-align here)
 	gutterW   = 4  // weekday gutter ("Mon ") on the contribution graph
 )
 
-// logoArt is the "nx" wordmark (pyfiglet "ANSI Shadow"). Every row is exactly
-// logoW cells wide; recoloured per harness via the accent, never per-harness.
-var logoArt = [6]string{
-	"███╗   ██╗██╗  ██╗",
-	"████╗  ██║╚██╗██╔╝",
-	"██╔██╗ ██║ ╚███╔╝ ",
-	"██║╚██╗██║ ██╔██╗ ",
-	"██║ ╚████║██╔╝ ██╗",
-	"╚═╝  ╚═══╝╚═╝  ╚═╝",
+// Per-harness icon art (6×18). Combined uses a designed nexus mark (no letters);
+// each AI harness shows its own brand-style glyph. Recoloured via the accent.
+var (
+	logoAll = [6]string{
+		"      ▄▄██▄▄      ",
+		"  ▄█▀▀  ██  ▀▀█▄  ",
+		"  █▄▄▄▄████▄▄▄▄█  ",
+		"  █▀  ▀████▀  ▀█  ",
+		"  ▀█▄▄▄ ██ ▄▄▄█▀  ",
+		"      ▀▀██▀▀      ",
+	}
+	logoClaude = [6]string{
+		"        ▄▄        ",
+		"   ▄    ██    ▄   ",
+		"    ▀▀▄▄██▄▄▀▀    ",
+		"    ▄▄▀▀██▀▀▄▄    ",
+		"   ▀    ██    ▀   ",
+		"        ▀▀        ",
+	}
+	logoCodex = [6]string{
+		"      ▄████▄      ",
+		"  ▄██▀▀ ▄▄ ▀▀██▄  ",
+		"  ██  ▄▀  ▀▄  ██  ",
+		"  ██  ▀▄  ▄▀  ██  ",
+		"  ▀██▄▄ ▀▀ ▄▄██▀  ",
+		"      ▀████▀      ",
+	}
+	logoCursor = [6]string{
+		"      ▄▄██▄▄      ",
+		"    ▄██▀▀▀▀██▄    ",
+		"   ███▄  ▄▄ ███   ",
+		"   ███▀▄▀  ▀███   ",
+		"    ▀██▄▄▄▄██▀    ",
+		"      ▀▀██▀▀      ",
+	}
+	logoPi = [6]string{
+		"     ▄██████▄     ",
+		"    ██▀▀▀▀▀▀██    ",
+		"    ██  ██  ██    ",
+		"    ██  ██  ██    ",
+		"    ██  ██  ██    ",
+		"   ▄█▀  ██  ▀█▄   ",
+	}
+)
+
+// logoArtFor returns the 6-row banner icon for a harness key.
+func logoArtFor(harness string) [6]string {
+	switch harness {
+	case core.Claude:
+		return logoClaude
+	case core.Codex:
+		return logoCodex
+	case core.Pi:
+		return logoPi
+	case core.Cursor:
+		return logoCursor
+	default:
+		return logoAll
+	}
 }
 
 func styled(fg color.Color) lipgloss.Style { return lipgloss.NewStyle().Foreground(fg) }
@@ -208,12 +258,13 @@ func renderBanner(th Theme, s core.Summary) string {
 		leaderRow("fav model", s.FavModel, infoW),
 	}
 
+	art := logoArtFor(s.Harness)
 	gap := strings.Repeat(" ", bannerGap)
 	rows := make([]string, len(info))
 	for i := range info {
 		logo := strings.Repeat(" ", logoW)
-		if i < len(logoArt) {
-			logo = styled(th.Accent).Render(logoArt[i])
+		if i < len(art) {
+			logo = styled(th.Accent).Render(art[i])
 		}
 		rows[i] = logo + gap + info[i]
 	}
