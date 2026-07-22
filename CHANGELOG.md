@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.1
+
+- Fixed Cursor model attribution under Auto: resolve the underlying model from AgentKv (`providerOptions.cursor.modelName` by `requestId`), then non-sentinel bubble/`modelConfig` names, then dominant `composerData.usageData` keys — keep "Auto" only when nothing resolved is available locally.
+- Invalidated on-disk token aggregate cache (schema v3) after the Cursor model-resolution change.
+
 ## 0.3.0
 
 - Added `nx update` to force a self-update from the latest GitHub release.
