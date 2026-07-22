@@ -293,3 +293,117 @@ func TestLoadCursorMeterDisabledByExplicitBubbles(t *testing.T) {
 		t.Error("TokensEstimated = true, want false")
 	}
 }
+
+// TestLoadCursorAutoResolvesViaAgentKV: Auto/default bubble selection with a
+// matching AgentKv requestId attributes tokens to the resolved model.
+func TestLoadCursorAutoResolvesViaAgentKV(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	ts := time.Date(2026, 6, 20, 10, 0, 0, 0, time.Local).Format(time.RFC3339)
+	asst := fmt.Sprintf(`{"type":2,"text":"hi","createdAt":%q,"requestId":"req-sol","tokenCount":{"inputTokens":1000,"outputTokens":500},"modelInfo":{"modelName":"auto"}}`, ts)
+	agent := `{"role":"assistant","providerOptions":{"cursor":{"requestId":"req-sol","modelName":"gpt-5.6-sol"}}}`
+
+	makeSQLiteDB(t, cursorStatePath(home),
+		[]any{`CREATE TABLE cursorDiskKV (key TEXT PRIMARY KEY, value BLOB)`},
+		[]any{`INSERT INTO cursorDiskKV (key, value) VALUES (?, ?)`, "composerData:c1", `{}`},
+		[]any{`INSERT INTO cursorDiskKV (key, value) VALUES (?, ?)`, "bubbleId:c1:a1", asst},
+		[]any{`INSERT INTO cursorDiskKV (key, value) VALUES (?, ?)`, "agentKv:blob:abc", agent},
+	)
+
+	a := loadCursor()
+	models := a.TopModels()
+	if len(models) != 1 {
+		t.Fatalf("TopModels = %+v, want 1 entry", models)
+	}
+	if models[0].ID != "gpt-5.6-sol" || models[0].Tokens != 1500 {
+		t.Errorf("models[0] = %+v, want gpt-5.6-sol with 1500 tokens", models[0])
+	}
+}
+
+// TestLoadCursorAutoResolvesViaUsageData: meter-only Auto conversations use
+// composer usageData keys (resolved model ids) instead of dumping into Auto.
+func TestLoadCursorAutoResolvesViaUsageData(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	ts := time.Date(2026, 6, 20, 10, 0, 0, 0, time.Local)
+	meta := fmt.Sprintf(`{"createdAt":%q,"promptTokenBreakdown":{"totalUsedTokens":20000},"modelConfig":{"modelName":"default"},"usageData":{"gpt-5.6-sol":{"amount":40,"costInCents":120},"gpt-5.5":{"amount":2,"costInCents":6}}}`,
+		ts.Format(time.RFC3339))
+	asst := fmt.Sprintf(`{"type":2,"text":%q,"createdAt":%q,"tokenCount":{"inputTokens":0,"outputTokens":0},"modelInfo":{"modelName":"auto"}}`,
+		strings.Repeat("a", 20), ts.Format(time.RFC3339))
+
+	makeSQLiteDB(t, cursorStatePath(home),
+		[]any{`CREATE TABLE cursorDiskKV (key TEXT PRIMARY KEY, value BLOB)`},
+		[]any{`INSERT INTO cursorDiskKV (key, value) VALUES (?, ?)`, "composerData:c1", meta},
+		[]any{`INSERT INTO cursorDiskKV (key, value) VALUES (?, ?)`, "bubbleId:c1:a1", asst},
+	)
+
+	a := loadCursor()
+	if a.InputTokens != 20000 {
+		t.Errorf("InputTokens = %d, want 20000", a.InputTokens)
+	}
+	models := a.TopModels()
+	if len(models) != 1 {
+		t.Fatalf("TopModels = %+v, want 1 entry (dominant usageData)", models)
+	}
+	if models[0].ID != "gpt-5.6-sol" {
+		t.Errorf("models[0].ID = %q, want gpt-5.6-sol", models[0].ID)
+	}
+	// 20000 meter input + 5 estimated assistant output
+	if models[0].Tokens != 20005 {
+		t.Errorf("models[0].Tokens = %d, want 20005", models[0].Tokens)
+	}
+}
+
+// TestLoadCursorUnresolvedAuto: sentinels with no AgentKv/usageData stay Auto.
+func TestLoadCursorUnresolvedAuto(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	ts := time.Date(2026, 6, 20, 10, 0, 0, 0, time.Local).Format(time.RFC3339)
+	asst := fmt.Sprintf(`{"type":2,"text":%q,"createdAt":%q,"tokenCount":{"inputTokens":0,"outputTokens":0},"modelInfo":{"modelName":"default"}}`,
+		strings.Repeat("x", 40), ts)
+
+	makeSQLiteDB(t, cursorStatePath(home),
+		[]any{`CREATE TABLE cursorDiskKV (key TEXT PRIMARY KEY, value BLOB)`},
+		[]any{`INSERT INTO cursorDiskKV (key, value) VALUES (?, ?)`, "composerData:c1", `{}`},
+		[]any{`INSERT INTO cursorDiskKV (key, value) VALUES (?, ?)`, "bubbleId:c1:a1", asst},
+	)
+
+	a := loadCursor()
+	models := a.TopModels()
+	if len(models) != 1 || models[0].ID != "auto" || models[0].Name != "Auto" || models[0].Tokens != 10 {
+		t.Errorf("TopModels = %+v, want single Auto with 10 estimated tokens", models)
+	}
+}
+
+func TestCursorModelSentinel(t *testing.T) {
+	for _, m := range []string{"", "auto", "Auto", "DEFAULT", " default "} {
+		if !cursorModelSentinel(m) {
+			t.Errorf("cursorModelSentinel(%q) = false, want true", m)
+		}
+	}
+	if cursorModelSentinel("gpt-5.6-sol") {
+		t.Error("cursorModelSentinel(gpt-5.6-sol) = true, want false")
+	}
+}
+
+func TestResolveCursorModelPrecedence(t *testing.T) {
+	meter := composerMeter{modelConfig: "claude-4.5-sonnet", usageModel: "gpt-5.5"}
+	if got := resolveCursorModel("gpt-5.6-sol", "auto", meter); got != "gpt-5.6-sol" {
+		t.Errorf("agent wins: got %q", got)
+	}
+	if got := resolveCursorModel("", "gpt-5.2", meter); got != "gpt-5.2" {
+		t.Errorf("bubble wins: got %q", got)
+	}
+	if got := resolveCursorModel("", "auto", meter); got != "claude-4.5-sonnet" {
+		t.Errorf("modelConfig wins: got %q", got)
+	}
+	if got := resolveCursorModel("", "default", composerMeter{usageModel: "gpt-5.6-sol"}); got != "gpt-5.6-sol" {
+		t.Errorf("usageData wins: got %q", got)
+	}
+	if got := resolveCursorModel("", "auto", composerMeter{}); got != "auto" {
+		t.Errorf("fallback: got %q", got)
+	}
+}

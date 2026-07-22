@@ -270,7 +270,8 @@ HARNESS   (default: all)
 
   Overrides: CLAUDE_CONFIG_DIR, CODEX_HOME, PI_AGENT_DIR.
   Claude uses final streaming chunks; Cursor prefers real counts / composer
-  meter, else ~4 bytes/token (local Cursor undercounts the admin dashboard).
+  meter, else ~4 bytes/token. Cursor Auto resolves underlying models locally
+  when available (local totals undercount the admin dashboard).
 
 RANGE     (default: alltime)
   alltime           lifetime

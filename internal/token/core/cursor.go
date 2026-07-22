@@ -21,6 +21,13 @@ import (
 //     credited once per conversation (latest context-window snapshot)
 //  3. Else chars/4 text estimate
 //
+// Model attribution (Auto mode often stores a selection sentinel locally):
+//  1. AgentKv assistant providerOptions.cursor.modelName (by requestId)
+//  2. Bubble modelInfo.modelName when not a sentinel
+//  3. Composer modelConfig.modelName when not a sentinel
+//  4. Dominant composer usageData key (resolved model ids Cursor recorded)
+//  5. Else "auto"
+//
 // Local figures undercount the Cursor admin dashboard (cache + cumulative
 // billed input are server-side only).
 
@@ -66,6 +73,7 @@ type cursorBubble struct {
 	Type              int    `json:"type"` // 1 = user, 2 = assistant
 	Text              string `json:"text"`
 	CreatedAt         string `json:"createdAt"`
+	RequestID         string `json:"requestId"`
 	ClientRpcSendTime int64  `json:"clientRpcSendTime"`
 	ClientSettleTime  int64  `json:"clientSettleTime"`
 	ClientEndTime     int64  `json:"clientEndTime"`
@@ -90,10 +98,19 @@ func (b *cursorBubble) time() time.Time {
 	return time.Time{}
 }
 
-// composerMeter is Cursor's per-conversation context-window snapshot.
+// cursorUsageStat is one model entry under composerData.usageData.
+type cursorUsageStat struct {
+	Amount      int64 `json:"amount"`
+	CostInCents int64 `json:"costInCents"`
+}
+
+// composerMeter is Cursor's per-conversation context-window snapshot plus
+// model hints used when bubble selection is Auto/default.
 type composerMeter struct {
-	tokens    int64
-	createdAt time.Time
+	tokens      int64
+	createdAt   time.Time
+	modelConfig string
+	usageModel  string // dominant usageData key, if any
 }
 
 func loadCursorIDE(a *Aggregate) {
@@ -121,6 +138,7 @@ func loadCursorDB(a *Aggregate, path string, seen map[string]bool) {
 	defer cleanup()
 
 	meters := loadComposerMeters(db, seen, a)
+	agentModels := loadAgentKVModels(db, seen)
 
 	// Track which composers saw any explicit bubble tokenCount.
 	explicit := map[string]bool{}
@@ -128,7 +146,7 @@ func loadCursorDB(a *Aggregate, path string, seen map[string]bool) {
 	scans := map[string]*compScan{}
 
 	for offset := 0; offset < cursorBudgetRows; offset += cursorBatchRows {
-		n := scanCursorBubbles(a, db, seen, meters, explicit, scans, cursorBatchRows, offset)
+		n := scanCursorBubbles(a, db, seen, meters, agentModels, explicit, scans, cursorBatchRows, offset)
 		if n < cursorBatchRows {
 			break
 		}
@@ -141,7 +159,7 @@ func loadCursorDB(a *Aggregate, path string, seen map[string]bool) {
 		}
 		t := m.createdAt
 		var out int64
-		var model string
+		var bubbleModel string
 		if sc, ok := scans[id]; ok {
 			if t.IsZero() {
 				t = sc.firstTS
@@ -149,7 +167,7 @@ func loadCursorDB(a *Aggregate, path string, seen map[string]bool) {
 			if sc.asstChars > 0 {
 				out = int64(sc.asstChars+3) / 4
 			}
-			model = sc.model
+			bubbleModel = sc.model
 		}
 		if t.IsZero() {
 			continue
@@ -161,9 +179,7 @@ func loadCursorDB(a *Aggregate, path string, seen map[string]bool) {
 		a.OutputTokens += out
 		a.addTokensOnDay(t, tok)
 		a.TokensEstimated = true // meter is a snapshot, not billed cumulative
-		if model == "" {
-			model = "auto"
-		}
+		model := resolveCursorModel("", bubbleModel, m)
 		a.addModelTokensOnDay(dayOf(t), model, tok)
 	}
 }
@@ -194,6 +210,10 @@ func loadComposerMeters(db *sql.DB, seen map[string]bool, a *Aggregate) map[stri
 				TotalUsedTokens int64 `json:"totalUsedTokens"`
 			} `json:"promptTokenBreakdown"`
 			ContextTokensUsed int64 `json:"contextTokensUsed"`
+			ModelConfig       struct {
+				ModelName string `json:"modelName"`
+			} `json:"modelConfig"`
+			UsageData map[string]cursorUsageStat `json:"usageData"`
 		}
 		if unmarshalJSON(value, &meta) != nil {
 			continue
@@ -213,11 +233,131 @@ func loadComposerMeters(db *sql.DB, seen map[string]bool, a *Aggregate) map[stri
 				created = time.Unix(int64(v), 0)
 			}
 		}
-		if tokens > 0 || !created.IsZero() {
-			out[id] = composerMeter{tokens: tokens, createdAt: created}
+		cfg := meta.ModelConfig.ModelName
+		if cursorModelSentinel(cfg) {
+			cfg = ""
+		}
+		usage := dominantUsageModel(meta.UsageData)
+		if tokens > 0 || !created.IsZero() || cfg != "" || usage != "" {
+			out[id] = composerMeter{
+				tokens:      tokens,
+				createdAt:   created,
+				modelConfig: cfg,
+				usageModel:  usage,
+			}
 		}
 	}
 	return out
+}
+
+// dominantUsageModel picks the usageData key with the highest amount, breaking
+// ties by costInCents. Sentinel keys are skipped.
+func dominantUsageModel(usage map[string]cursorUsageStat) string {
+	best := ""
+	var bestAmount, bestCost int64
+	for id, st := range usage {
+		if cursorModelSentinel(id) {
+			continue
+		}
+		if best == "" || st.Amount > bestAmount || (st.Amount == bestAmount && st.CostInCents > bestCost) {
+			best = id
+			bestAmount = st.Amount
+			bestCost = st.CostInCents
+		}
+	}
+	return best
+}
+
+// loadAgentKVModels builds requestId → resolved modelName from agentKv blobs.
+// Bounded like bubble scans so huge AgentKv stores cannot unbounded-scan.
+func loadAgentKVModels(db *sql.DB, seen map[string]bool) map[string]string {
+	out := map[string]string{}
+	for offset := 0; offset < cursorBudgetRows; offset += cursorBatchRows {
+		n := scanAgentKVModels(db, seen, out, cursorBatchRows, offset)
+		if n < cursorBatchRows {
+			break
+		}
+	}
+	return out
+}
+
+func scanAgentKVModels(db *sql.DB, seen map[string]bool, out map[string]string, limit, offset int) int {
+	rows, err := db.Query(`SELECT key, value FROM cursorDiskKV WHERE key LIKE 'agentKv:blob:%' ORDER BY rowid DESC LIMIT ? OFFSET ?`, limit, offset)
+	if err != nil {
+		return 0
+	}
+	defer rows.Close()
+	n := 0
+	for rows.Next() {
+		var key string
+		var value []byte
+		if rows.Scan(&key, &value) != nil {
+			continue
+		}
+		n++
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		noteAgentKVBlob(value, out)
+	}
+	return n
+}
+
+// agentKVBlob is the subset of an AgentKv message we need for model resolution.
+type agentKVBlob struct {
+	Role            string `json:"role"`
+	ProviderOptions struct {
+		Cursor struct {
+			RequestID string `json:"requestId"`
+			ModelName string `json:"modelName"`
+		} `json:"cursor"`
+	} `json:"providerOptions"`
+	Content []struct {
+		ProviderOptions struct {
+			Cursor struct {
+				RequestID string `json:"requestId"`
+				ModelName string `json:"modelName"`
+			} `json:"cursor"`
+		} `json:"providerOptions"`
+	} `json:"content"`
+}
+
+func noteAgentKVBlob(value []byte, out map[string]string) {
+	var b agentKVBlob
+	if unmarshalJSON(value, &b) != nil {
+		return
+	}
+	// Prefer message-level options; fall back to the first content block that
+	// carries a resolved model (reasoning / tool-call blocks often do).
+	req := b.ProviderOptions.Cursor.RequestID
+	model := b.ProviderOptions.Cursor.ModelName
+	if cursorModelSentinel(model) || req == "" {
+		for _, c := range b.Content {
+			m := c.ProviderOptions.Cursor.ModelName
+			r := c.ProviderOptions.Cursor.RequestID
+			if req == "" {
+				req = r
+			}
+			if !cursorModelSentinel(m) {
+				model = m
+				if r != "" {
+					req = r
+				}
+				break
+			}
+			if req == "" && r != "" {
+				req = r
+			}
+		}
+	}
+	if req == "" || cursorModelSentinel(model) {
+		return
+	}
+	// First non-sentinel wins (blobs are scanned newest-first).
+	if _, ok := out[req]; !ok {
+		out[req] = model
+	}
 }
 
 func composerIDFromBubbleKey(key string) string {
@@ -232,7 +372,7 @@ func composerIDFromBubbleKey(key string) string {
 type compScan struct {
 	firstTS   time.Time
 	asstChars int
-	model     string
+	model     string // first non-sentinel bubble model seen
 }
 
 func scanCursorBubbles(
@@ -240,6 +380,7 @@ func scanCursorBubbles(
 	db *sql.DB,
 	seen map[string]bool,
 	meters map[string]composerMeter,
+	agentModels map[string]string,
 	explicit map[string]bool,
 	scans map[string]*compScan,
 	limit, offset int,
@@ -271,7 +412,7 @@ func scanCursorBubbles(
 			continue
 		}
 		cid := composerIDFromBubbleKey(key)
-		noteCursorBubble(a, &b, cid, meters, explicit, scans)
+		noteCursorBubble(a, &b, cid, meters, agentModels, explicit, scans)
 	}
 	return n
 }
@@ -281,6 +422,7 @@ func noteCursorBubble(
 	b *cursorBubble,
 	composerID string,
 	meters map[string]composerMeter,
+	agentModels map[string]string,
 	explicit map[string]bool,
 	scans map[string]*compScan,
 ) {
@@ -300,10 +442,19 @@ func noteCursorBubble(
 	if sc.firstTS.IsZero() || t.Before(sc.firstTS) {
 		sc.firstTS = t
 	}
+
+	meter, hasMeter := meters[composerID]
+	var agentModel string
+	if b.RequestID != "" {
+		agentModel = agentModels[b.RequestID]
+	}
+
 	if b.Type == 2 {
 		sc.asstChars += len(b.Text)
-		if m := b.ModelInfo.ModelName; m != "" && m != "default" && sc.model == "" {
-			sc.model = m
+		if sc.model == "" {
+			if m := resolveCursorModel(agentModel, b.ModelInfo.ModelName, meter); !cursorModelSentinel(m) {
+				sc.model = m
+			}
 		}
 	}
 
@@ -317,18 +468,14 @@ func noteCursorBubble(
 		a.InputTokens += in
 		a.OutputTokens += out
 		if b.Type == 2 {
-			m := b.ModelInfo.ModelName
-			if m == "" || m == "default" {
-				m = "auto"
-			}
-			a.addModelOnDay(dayOf(t), m, tok)
+			a.addModelOnDay(dayOf(t), resolveCursorModel(agentModel, b.ModelInfo.ModelName, meter), tok)
 		}
 		return
 	}
 
 	// Zero bubble tokens: if a composer meter will cover input, only estimate
 	// nothing here (meter credited later). Otherwise fall back to chars/4.
-	if m, ok := meters[composerID]; ok && m.tokens > 0 {
+	if hasMeter && meter.tokens > 0 {
 		// Still count the message for activity, but don't estimate tokens.
 		a.noteMessage(t, 0)
 		return
@@ -350,12 +497,35 @@ func noteCursorBubble(
 	a.InputTokens += in
 	a.OutputTokens += out
 	if b.Type == 2 {
-		m := b.ModelInfo.ModelName
-		if m == "" || m == "default" {
-			m = "auto"
-		}
-		a.addModelOnDay(dayOf(t), m, tok)
+		a.addModelOnDay(dayOf(t), resolveCursorModel(agentModel, b.ModelInfo.ModelName, meter), tok)
 	}
+}
+
+// cursorModelSentinel reports selection placeholders that are not a resolved model.
+func cursorModelSentinel(m string) bool {
+	switch strings.ToLower(strings.TrimSpace(m)) {
+	case "", "default", "auto":
+		return true
+	default:
+		return false
+	}
+}
+
+// resolveCursorModel picks the best available local model id for a turn/composer.
+func resolveCursorModel(agentModel, bubbleModel string, meter composerMeter) string {
+	if !cursorModelSentinel(agentModel) {
+		return agentModel
+	}
+	if !cursorModelSentinel(bubbleModel) {
+		return bubbleModel
+	}
+	if !cursorModelSentinel(meter.modelConfig) {
+		return meter.modelConfig
+	}
+	if !cursorModelSentinel(meter.usageModel) {
+		return meter.usageModel
+	}
+	return "auto"
 }
 
 func estTokens(text string) int64 {

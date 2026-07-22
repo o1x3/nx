@@ -236,8 +236,10 @@ Overrides: CLAUDE_CONFIG_DIR, CODEX_HOME, PI_AGENT_DIR (comma-separated paths).
 Claude counts final streaming chunks (stop_reason) and includes subagent
 JSONL. Codex prefers last_token_usage deltas and skips archived duplicates.
 Cursor prefers real bubble tokenCount when present; otherwise credits the
-composer context meter once per chat, else ~4 bytes/token. Local Cursor
-totals undercount the admin dashboard (cache/billed cumulatives are server-side).
+composer context meter once per chat, else ~4 bytes/token. Cursor Auto
+resolves to the underlying local model (AgentKv / usageData) when available.
+Local Cursor totals undercount the admin dashboard (cache/billed cumulatives
+are server-side).
 
 More: nx help token
 

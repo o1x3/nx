@@ -87,7 +87,7 @@ Data sources:
 | pi.dev | `~/.pi/agent/sessions/**/*.jsonl` | real |
 | Cursor (IDE + CLI) | `<config>/Cursor/User/globalStorage/state.vscdb` + `~/.cursor/chats/*/*/store.db` | bubble counts when present; else composer context meter; else ~4 bytes/token |
 
-Overrides: `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `PI_AGENT_DIR` (comma-separated). Cursor local totals undercount the admin dashboard (cache and billed cumulatives are server-side). `<config>` is `~/Library/Application Support` on macOS and `~/.config` on Linux.
+Overrides: `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `PI_AGENT_DIR` (comma-separated). Cursor local totals undercount the admin dashboard (cache and billed cumulatives are server-side). Cursor Auto resolves to the underlying local model when AgentKv / `usageData` records it; otherwise it stays "Auto". `<config>` is `~/Library/Application Support` on macOS and `~/.config` on Linux.
 
 Environment:
 
