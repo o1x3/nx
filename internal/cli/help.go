@@ -199,7 +199,7 @@ Topics:
   view      overview, models, hours, punchcard, ...
   output    json / quiet / compare modes
   flags     -i / --help
-  env       NX_* / CLAUDE_CONFIG_DIR / CODEX_HOME / PI_AGENT_DIR
+  env       NX_* / CLAUDE_CONFIG_DIR / CODEX_HOME / PI_AGENT_DIR / CURSOR_SESSION_TOKEN
   exit      process exit codes
   examples  common invocations
 
@@ -235,11 +235,11 @@ Overrides: CLAUDE_CONFIG_DIR, CODEX_HOME, PI_AGENT_DIR (comma-separated paths).
 
 Claude counts final streaming chunks (stop_reason) and includes subagent
 JSONL. Codex prefers last_token_usage deltas and skips archived duplicates.
-Cursor prefers real bubble tokenCount when present; otherwise credits the
+Cursor prefers the dashboard usage API (billed input/output/cache) when a
+local session JWT is available; otherwise bubble tokenCount, else the
 composer context meter once per chat, else ~4 bytes/token. Cursor Auto
 resolves to the underlying local model (AgentKv / usageData) when available.
-Local Cursor totals undercount the admin dashboard (cache/billed cumulatives
-are server-side).
+Set NX_TOKEN_CURSOR_LOCAL=1 to force local-only Cursor totals.
 
 More: nx help token
 
@@ -306,12 +306,15 @@ More: nx help token
 		return `nx token — environment
 
 ENV
-  NX_BACKGROUND     light|dark — override terminal background detection
-  NX_TRUECOLOR      set to force 24-bit colour
-  NX_TOKEN_NO_CACHE set to bypass the on-disk aggregate cache
-  CLAUDE_CONFIG_DIR comma-separated Claude config roots (…/projects)
-  CODEX_HOME        comma-separated Codex homes
-  PI_AGENT_DIR      comma-separated pi-agent session dirs
+  NX_BACKGROUND           light|dark — override terminal background detection
+  NX_TRUECOLOR            set to force 24-bit colour
+  NX_TOKEN_NO_CACHE       set to bypass the on-disk aggregate cache
+  NX_TOKEN_CURSOR_LOCAL   set to skip Cursor dashboard enrichment (local only)
+  NX_CURSOR_SESSION_TOKEN override Cursor dashboard session (JWT or sub::jwt)
+  CURSOR_SESSION_TOKEN    same as NX_CURSOR_SESSION_TOKEN
+  CLAUDE_CONFIG_DIR       comma-separated Claude config roots (…/projects)
+  CODEX_HOME              comma-separated Codex homes
+  PI_AGENT_DIR            comma-separated pi-agent session dirs
 
 Piped output is plain text. NO_COLOR / CLICOLOR are respected.
 

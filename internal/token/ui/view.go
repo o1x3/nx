@@ -244,7 +244,7 @@ func renderBanner(th Theme, s core.Summary) string {
 
 	tokens := core.FormatTokens(s.TotalTokens)
 	if s.TokensEstimated {
-		tokens = "≈" + tokens // cursor stores no token counts; figures are bytes/4
+		tokens = "≈" + tokens // local Cursor estimates when dashboard unavailable
 	}
 	info := []string{
 		title,

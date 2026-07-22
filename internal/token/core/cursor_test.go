@@ -10,6 +10,13 @@ import (
 	"time"
 )
 
+// forceCursorLocal skips the dashboard enricher so local-parser tests stay
+// hermetic even if a real Cursor session token is present in the environment.
+func forceCursorLocal(t *testing.T) {
+	t.Helper()
+	t.Setenv("NX_TOKEN_CURSOR_LOCAL", "1")
+}
+
 // makeSQLiteDB creates a fixture database at path (creating parent dirs) and
 // runs each statement in order. Statements may carry args as {sql, args...}.
 func makeSQLiteDB(t *testing.T, path string, stmts ...[]any) {
@@ -41,6 +48,7 @@ func cursorStatePath(home string) string {
 func TestLoadCursorIDE(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	forceCursorLocal(t)
 
 	day1 := time.Date(2026, 6, 20, 10, 0, 0, 0, time.Local)
 	day2 := time.Date(2026, 6, 21, 9, 30, 0, 0, time.Local)
@@ -113,6 +121,7 @@ func TestLoadCursorIDE(t *testing.T) {
 func TestLoadCursorIDEDuplicatePaths(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	forceCursorLocal(t)
 
 	ts := time.Date(2026, 6, 20, 10, 0, 0, 0, time.Local).Format(time.RFC3339)
 	asst := fmt.Sprintf(`{"type":2,"text":"hi","createdAt":%q,"tokenCount":{"inputTokens":100,"outputTokens":50},"modelInfo":{"modelName":"claude-4.5-sonnet"}}`, ts)
@@ -149,6 +158,7 @@ func TestLoadCursorIDEDuplicatePaths(t *testing.T) {
 func TestLoadCursorIDEExactTokens(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	forceCursorLocal(t)
 
 	ts := time.Date(2026, 6, 20, 10, 0, 0, 0, time.Local).Format(time.RFC3339)
 	makeSQLiteDB(t, cursorStatePath(home),
@@ -177,6 +187,7 @@ func TestLoadCursorIDEExactTokens(t *testing.T) {
 func TestLoadCursorCombined(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	forceCursorLocal(t)
 
 	ts := time.Date(2026, 6, 20, 10, 0, 0, 0, time.Local)
 	makeSQLiteDB(t, cursorStatePath(home),
@@ -237,6 +248,7 @@ func TestMergeTokensEstimated(t *testing.T) {
 func TestLoadCursorComposerMeter(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	forceCursorLocal(t)
 
 	ts := time.Date(2026, 6, 20, 10, 0, 0, 0, time.Local)
 	meta := fmt.Sprintf(`{"createdAt":%q,"promptTokenBreakdown":{"totalUsedTokens":32000}}`, ts.Format(time.RFC3339))
@@ -273,6 +285,7 @@ func TestLoadCursorComposerMeter(t *testing.T) {
 func TestLoadCursorMeterDisabledByExplicitBubbles(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	forceCursorLocal(t)
 
 	ts := time.Date(2026, 6, 20, 10, 0, 0, 0, time.Local)
 	meta := `{"createdAt":"2026-06-20T10:00:00Z","promptTokenBreakdown":{"totalUsedTokens":32000}}`
@@ -299,6 +312,7 @@ func TestLoadCursorMeterDisabledByExplicitBubbles(t *testing.T) {
 func TestLoadCursorAutoResolvesViaAgentKV(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	forceCursorLocal(t)
 
 	ts := time.Date(2026, 6, 20, 10, 0, 0, 0, time.Local).Format(time.RFC3339)
 	asst := fmt.Sprintf(`{"type":2,"text":"hi","createdAt":%q,"requestId":"req-sol","tokenCount":{"inputTokens":1000,"outputTokens":500},"modelInfo":{"modelName":"auto"}}`, ts)
@@ -326,6 +340,7 @@ func TestLoadCursorAutoResolvesViaAgentKV(t *testing.T) {
 func TestLoadCursorAutoResolvesViaUsageData(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	forceCursorLocal(t)
 
 	ts := time.Date(2026, 6, 20, 10, 0, 0, 0, time.Local)
 	meta := fmt.Sprintf(`{"createdAt":%q,"promptTokenBreakdown":{"totalUsedTokens":20000},"modelConfig":{"modelName":"default"},"usageData":{"gpt-5.6-sol":{"amount":40,"costInCents":120},"gpt-5.5":{"amount":2,"costInCents":6}}}`,
@@ -360,6 +375,7 @@ func TestLoadCursorAutoResolvesViaUsageData(t *testing.T) {
 func TestLoadCursorUnresolvedAuto(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	forceCursorLocal(t)
 
 	ts := time.Date(2026, 6, 20, 10, 0, 0, 0, time.Local).Format(time.RFC3339)
 	asst := fmt.Sprintf(`{"type":2,"text":%q,"createdAt":%q,"tokenCount":{"inputTokens":0,"outputTokens":0},"modelInfo":{"modelName":"default"}}`,

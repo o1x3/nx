@@ -31,12 +31,14 @@ func makeCursorCLIStore(t *testing.T, path, model string, createdAtMs int64, blo
 func TestLoadCursorCLI(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	forceCursorLocal(t)
 
 	created := time.Date(2026, 6, 18, 9, 0, 0, 0, time.Local)
 	makeCursorCLIStore(t, filepath.Join(home, ".cursor", "chats", "h1", "s1", "store.db"), "gpt-5.2", created.UnixMilli(),
-		`{"role":"user","content":"hello there, please fix"}`,                                                // 23 bytes => 6 estimated input tokens
-		`{"role":"assistant","content":[{"type":"text","text":"done, the fix is in"},{"type":"tool_call"}]}`, // 19 bytes => 5 estimated output tokens
-		`{"role":"assistant","content":{"content":[{"type":"text","text":"nested reply here"}]}}`,            // nested object, 17 bytes => 5 estimated output tokens
+		`{"role":"user","content":"hello there, please fix"}`, // 23 bytes => 6 estimated input tokens
+		// text (19) + tool_call name "Shell" (5) + args {"cmd":"ls"} (12) = 36 => 9 output tokens
+		`{"role":"assistant","content":[{"type":"text","text":"done, the fix is in"},{"type":"tool_call","name":"Shell","args":{"cmd":"ls"}}]}`,
+		`{"role":"assistant","content":{"content":[{"type":"text","text":"nested reply here"}]}}`, // nested object, 17 bytes => 5 estimated output tokens
 		`{"role":"user","content":{}}`, // empty nested object => 0 tokens, still a counted user message
 		"\x00\x01binary garbage",       // non-JSON blob, skipped
 	)
@@ -50,8 +52,8 @@ func TestLoadCursorCLI(t *testing.T) {
 	if a.Messages != 4 {
 		t.Errorf("Messages = %d, want 4 (binary blob skipped, empty-content user counted)", a.Messages)
 	}
-	if a.InputTokens != 6 || a.OutputTokens != 10 {
-		t.Errorf("tokens = %d/%d, want 6/10 (bytes/4 estimates)", a.InputTokens, a.OutputTokens)
+	if a.InputTokens != 6 || a.OutputTokens != 14 {
+		t.Errorf("tokens = %d/%d, want 6/14 (bytes/4 estimates incl. tool_call args)", a.InputTokens, a.OutputTokens)
 	}
 	if !a.TokensEstimated {
 		t.Error("TokensEstimated = false, want true (CLI tokens are always estimated)")
@@ -61,13 +63,13 @@ func TestLoadCursorCLI(t *testing.T) {
 	if a.ByDayMsgs[day] != 4 {
 		t.Errorf("ByDayMsgs[%s] = %d, want 4 (all messages on the session day)", day, a.ByDayMsgs[day])
 	}
-	if a.ByDayTokens[day] != 16 {
-		t.Errorf("ByDayTokens[%s] = %d, want 16", day, a.ByDayTokens[day])
+	if a.ByDayTokens[day] != 20 {
+		t.Errorf("ByDayTokens[%s] = %d, want 20", day, a.ByDayTokens[day])
 	}
 
 	models := a.TopModels()
-	if len(models) != 1 || models[0].ID != "gpt-5.2" || models[0].Name != "GPT-5.2" || models[0].Tokens != 10 || models[0].Messages != 2 {
-		t.Errorf("TopModels = %+v, want single gpt-5.2 with 10 tokens / 2 messages", models)
+	if len(models) != 1 || models[0].ID != "gpt-5.2" || models[0].Name != "GPT-5.2" || models[0].Tokens != 14 || models[0].Messages != 2 {
+		t.Errorf("TopModels = %+v, want single gpt-5.2 with 14 tokens / 2 messages", models)
 	}
 }
 
@@ -76,6 +78,7 @@ func TestLoadCursorCLI(t *testing.T) {
 func TestLoadCursorCLISecondsAndMtime(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	forceCursorLocal(t)
 
 	created := time.Date(2026, 6, 17, 22, 0, 0, 0, time.Local)
 	makeCursorCLIStore(t, filepath.Join(home, ".cursor", "chats", "h1", "s1", "store.db"), "", created.Unix(), // seconds, not ms

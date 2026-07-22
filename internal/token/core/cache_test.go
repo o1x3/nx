@@ -72,6 +72,7 @@ func TestLoadCachedDisabled(t *testing.T) {
 func TestLoadAllParallel(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	forceCursorLocal(t)
 	t.Setenv("NX_TOKEN_NO_CACHE", "1")
 
 	day := time.Date(2026, 6, 20, 10, 0, 0, 0, time.Local).Format(time.RFC3339)

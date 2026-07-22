@@ -58,7 +58,7 @@ type Aggregate struct {
 	ByDayModelMsg map[string]map[string]int   // day -> model -> messages
 
 	// TokensEstimated is true when any of the token totals were derived from
-	// text length (Cursor doesn't record usage) rather than read from a ledger.
+	// text length (or a local Cursor meter snapshot) rather than a billed ledger.
 	TokensEstimated bool
 
 	First time.Time

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.0
+
+- Cursor token totals now prefer the Cursor dashboard usage API (same approach as cursor-usage): read the local session JWT from `state.vscdb`, fetch billed input/output/cache events, and keep local sessions/messages for activity. Falls back to local bubble/meter/chars÷4 when offline or unauthenticated.
+- Added `NX_TOKEN_CURSOR_LOCAL` to force local-only Cursor counting, plus `NX_CURSOR_SESSION_TOKEN` / `CURSOR_SESSION_TOKEN` overrides.
+- Improved offline Cursor CLI estimates by counting reasoning and tool-call/result text in `store.db` blobs (still estimated).
+- Invalidated on-disk token aggregate cache (schema v4) after the Cursor dashboard enricher.
+
 ## 0.3.1
 
 - Fixed Cursor model attribution under Auto: resolve the underlying model from AgentKv (`providerOptions.cursor.modelName` by `requestId`), then non-sentinel bubble/`modelConfig` names, then dominant `composerData.usageData` keys — keep "Auto" only when nothing resolved is available locally.
