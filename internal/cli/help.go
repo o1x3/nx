@@ -27,6 +27,11 @@ func helpFor(args []string) (string, error) {
 		return gitHelpFor(args[1:])
 	case "token", "tokens":
 		return tokenHelpFor(args[1:])
+	case "update":
+		if len(args) > 1 {
+			return "", ExitError{Code: 2, Err: fmt.Errorf("unknown help topic %q\n\n%s", args[1], strings.TrimSpace(updateHelpText()))}
+		}
+		return updateHelpText(), nil
 	case "version", "-v", "--version":
 		if len(args) > 1 {
 			return "", ExitError{Code: 2, Err: fmt.Errorf("unknown help topic %q\n\n%s", args[1], strings.TrimSpace(versionHelpText()))}
@@ -84,13 +89,35 @@ Usage:
 Commands:
   git       Git repository helpers
   token     Token stats across AI coding harnesses
+  update    Update nx to the latest release
   version   Show build version
   help      Show help (nest for details)
 
 Nest help to learn more:
   nx help git
   nx help token
+  nx help update
   nx help version
+
+`
+}
+
+func updateHelpText() string {
+	return `Usage:
+  nx update
+
+Check GitHub releases for a newer nx build and replace this binary in place
+when one is available. Released builds also check on every other nx invocation.
+
+Notes:
+  - Resolves the latest tag via github.com/.../releases/latest (not the API)
+  - Needs a writable install directory (default ~/.local/bin)
+  - Development builds (version "dev") cannot self-update
+  - Set NX_NO_UPDATE=1 to disable background checks (nx update still works)
+
+Examples:
+  nx update
+  NX_NO_UPDATE=1 nx version
 
 `
 }

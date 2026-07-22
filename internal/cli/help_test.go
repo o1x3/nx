@@ -19,7 +19,17 @@ func TestNestedHelp(t *testing.T) {
 		{
 			name: "root",
 			args: []string{"help"},
-			want: []string{"nx help [command...]", "nx help git", "nx help token"},
+			want: []string{"nx help [command...]", "nx help git", "nx help token", "nx help update"},
+		},
+		{
+			name: "update",
+			args: []string{"help", "update"},
+			want: []string{"nx update", "releases/latest", "NX_NO_UPDATE"},
+		},
+		{
+			name: "update help via command",
+			args: []string{"update", "--help"},
+			want: []string{"nx update", "writable install directory"},
 		},
 		{
 			name: "git overview",

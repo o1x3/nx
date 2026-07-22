@@ -13,7 +13,7 @@ Current domains:
 
 - `internal/gitstat`: repository diff stats against the remote default branch.
 - `internal/render`: Lip Gloss terminal presentation.
-- `internal/selfupdate`: daily GitHub release checks and binary replacement.
+- `internal/selfupdate`: per-invocation GitHub release checks (via `releases/latest`, not the API) and binary replacement; also backs `nx update`.
 - `internal/token`: coding-agent token/cost usage stats across harnesses (claude, codex, pi, cursor), with `core` collection, `ui` rendering, and `tui` interactive views.
 
 Dependency decision: `internal/token` reads Cursor's SQLite stores through `modernc.org/sqlite` (pure Go, ~4 MB added to the stripped binary). Rejected alternatives: `mattn/go-sqlite3` needs cgo and breaks the `CGO_ENABLED=0` cross-compiled releases; shelling out to a system `sqlite3` is a fragile runtime dependency; a hand-written SQLite/WAL reader is a correctness risk.

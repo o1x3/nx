@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0
+
+- Added `nx update` to force a self-update from the latest GitHub release.
+- Background self-update now checks on every invocation (no longer once per day), running alongside the command so startup stays snappy.
+- Self-update and the installer-style release lookup now use `github.com/.../releases/latest` redirects instead of `api.github.com`, avoiding unauthenticated API rate limits.
+
 ## 0.2.0
 
 - Replaced the shared `nx` wordmark on `nx token` banners with per-harness icon ASCII (nexus mark for combined; Claude asterisk, Codex brackets, Cursor cube, pi glyph).
