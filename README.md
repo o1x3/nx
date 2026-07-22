@@ -8,7 +8,7 @@
 curl -fsSL https://raw.githubusercontent.com/o1x3/nx/main/scripts/install.sh | sh
 ```
 
-By default this installs to `~/.local/bin/nx` (user-writable) so daily self-update can replace the binary in place. The installer prepends that directory on `PATH` in your shell profile when needed.
+By default this installs to `~/.local/bin/nx` (user-writable) so self-update can replace the binary in place. The installer prepends that directory on `PATH` in your shell profile when needed.
 
 Re-running the installer migrates an older `/usr/local/bin/nx` install (the previous default) by installing into `~/.local/bin` and removing the stale binary so `nx` keeps resolving correctly.
 
@@ -28,13 +28,15 @@ nx help git             # git subcommands
 nx help git stat        # git stat details
 nx help token           # full token reference
 nx help token harness   # one token topic
+nx help update          # self-update
 ```
 
-Topics under `nx help token`: `harness`, `range`, `view`, `output`, `flags`, `env`, `exit`, `examples` (also `nx help token topics`). Domain-local forms work too: `nx git help`, `nx git help stat`, `nx token --help`.
+Topics under `nx help token`: `harness`, `range`, `view`, `output`, `flags`, `env`, `exit`, `examples` (also `nx help token topics`). Domain-local forms work too: `nx git help`, `nx git help stat`, `nx token --help`, `nx update --help`.
 
 ## Commands
 
 ```sh
+nx update
 nx git stat [--jobs <n>] <folder> [folder...]
 ```
 
@@ -100,17 +102,25 @@ Interactive keys: `←`/`→` switch harness, `tab`/`⇧tab` cycle views, `1`/`2
 
 ## Updates
 
-Released builds check GitHub for the latest release at most once per day. If a newer release exists for your OS and CPU, `nx` downloads it and replaces the current binary in place.
+Released builds check GitHub for a newer release on every invocation (in the background while your command runs). If one exists for your OS and CPU, `nx` downloads it and replaces the current binary in place.
+
+Force a check and apply immediately:
+
+```sh
+nx update
+```
+
+Resolution uses `https://github.com/o1x3/nx/releases/latest` (same as the installer), not the GitHub API, so unauthenticated API rate limits do not apply.
 
 Auto-update needs a writable install directory (the default `~/.local/bin` install). If `nx` still lives only in a root-owned path, re-run the installer to migrate onto `~/.local/bin`.
 
-Disable update checks:
+Disable background update checks:
 
 ```sh
 NX_NO_UPDATE=1 nx git stat .
 ```
 
-Development builds with version `dev` do not auto-update.
+`nx update` still runs when requested. Development builds with version `dev` do not auto-update.
 
 ## Development
 
@@ -158,6 +168,6 @@ The command framework is intentionally small. `nx git stat` and `nx token` are r
 - `internal/gitstat`: git collection logic
 - `internal/render`: terminal rendering
 - `internal/token`: token-usage dashboard (`core` collection/estimation, `ui` static views, `tui` interactive mode)
-- `internal/selfupdate`: daily release update checks
+- `internal/selfupdate`: per-invocation release update checks and `nx update`
 
 No Cobra dependency yet. That is reversible if the command tree becomes large enough to justify it.

@@ -24,13 +24,26 @@ func main() {
 		Date:    date,
 	}
 
-	selfupdate.Check(ctx, selfupdate.Options{
-		CurrentVersion: version,
-		Repo:           "o1x3/nx",
-		Stderr:         os.Stderr,
-	})
+	// Explicit `nx update` does its own check; skip the background one so the
+	// two paths do not race to replace the binary.
+	updateDone := make(chan struct{})
+	if !isUpdateCommand(os.Args[1:]) {
+		go func() {
+			defer close(updateDone)
+			selfupdate.Check(ctx, selfupdate.Options{
+				CurrentVersion: version,
+				Repo:           "o1x3/nx",
+				Stderr:         os.Stderr,
+			})
+		}()
+	} else {
+		close(updateDone)
+	}
 
-	if err := cli.New(info).Run(ctx, os.Args[1:], os.Stdout, os.Stderr); err != nil {
+	err := cli.New(info).Run(ctx, os.Args[1:], os.Stdout, os.Stderr)
+	<-updateDone
+
+	if err != nil {
 		code := 1
 		var exitErr cli.ExitError
 		if errors.As(err, &exitErr) {
@@ -41,4 +54,8 @@ func main() {
 		}
 		os.Exit(code)
 	}
+}
+
+func isUpdateCommand(args []string) bool {
+	return len(args) > 0 && args[0] == "update"
 }

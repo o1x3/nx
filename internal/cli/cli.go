@@ -9,6 +9,7 @@ import (
 
 	"github.com/o1x3/nx/internal/gitstat"
 	"github.com/o1x3/nx/internal/render"
+	"github.com/o1x3/nx/internal/selfupdate"
 )
 
 type BuildInfo struct {
@@ -40,9 +41,29 @@ func (a App) Run(ctx context.Context, args []string, stdout, stderr io.Writer) e
 		return a.runGit(ctx, args[1:], stdout)
 	case "token", "tokens":
 		return a.runToken(ctx, args[1:], stdout)
+	case "update":
+		return a.runUpdate(ctx, args[1:], stdout, stderr)
 	default:
 		return ExitError{Code: 2, Err: fmt.Errorf("unknown command %q\n\n%s", args[0], strings.TrimSpace(helpText()))}
 	}
+}
+
+func (a App) runUpdate(ctx context.Context, args []string, stdout, stderr io.Writer) error {
+	if len(args) > 0 {
+		switch args[0] {
+		case "help", "-h", "--help":
+			return a.runHelp([]string{"update"}, stdout)
+		default:
+			return ExitError{Code: 2, Err: fmt.Errorf("usage: nx update\n\nTry: nx help update")}
+		}
+	}
+
+	_, err := selfupdate.Update(ctx, selfupdate.Options{
+		CurrentVersion: a.info.Version,
+		Stdout:         stdout,
+		Stderr:         stderr,
+	})
+	return err
 }
 
 func (a App) runGit(ctx context.Context, args []string, stdout io.Writer) error {

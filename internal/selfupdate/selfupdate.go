@@ -5,7 +5,6 @@ import (
 	"compress/gzip"
 	"context"
 	"crypto/sha256"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -19,103 +18,145 @@ import (
 )
 
 const (
-	checkInterval = 24 * time.Hour
-	updateTimeout = 5 * time.Second
+	checkTimeout  = 5 * time.Second
+	updateTimeout = 60 * time.Second
 )
 
+// Options configures a background check or an explicit update.
 type Options struct {
 	CurrentVersion string
 	Repo           string
+	Stdout         io.Writer
 	Stderr         io.Writer
 }
 
+// Result describes the outcome of an explicit Update.
+type Result struct {
+	Current string
+	Latest  string
+	Updated bool
+}
+
 type release struct {
-	TagName string  `json:"tag_name"`
-	Assets  []asset `json:"assets"`
+	TagName string
+	Assets  []asset
 }
 
 type asset struct {
-	Name string `json:"name"`
-	URL  string `json:"browser_download_url"`
+	Name string
+	URL  string
 }
 
-type state struct {
-	LastChecked time.Time `json:"last_checked"`
-}
-
+// Check looks for a newer GitHub release on every invocation and replaces the
+// binary in place when possible. Failures stay quiet; a successful update
+// prints a short stderr note. Uses github.com/.../releases/latest (not the
+// GitHub API).
 func Check(ctx context.Context, opts Options) {
 	if os.Getenv("NX_NO_UPDATE") == "1" || opts.CurrentVersion == "" || opts.CurrentVersion == "dev" {
 		return
 	}
-	if opts.Repo == "" {
-		opts.Repo = "o1x3/nx"
-	}
-	if opts.Stderr == nil {
-		opts.Stderr = io.Discard
-	}
+	opts = withDefaults(opts)
 
-	statePath, err := stateFile()
-	if err != nil {
+	checkCtx, cancel := context.WithTimeout(ctx, checkTimeout)
+	defer cancel()
+
+	rel, err := latestRelease(checkCtx, opts.Repo)
+	if err != nil || !newer(rel.TagName, opts.CurrentVersion) {
 		return
 	}
-	if recentlyChecked(statePath) {
-		return
+	cancel()
+
+	// Discovery is time-boxed tightly; downloading a newer binary gets the
+	// longer budget used by `nx update`.
+	updateCtx, updateCancel := context.WithTimeout(ctx, updateTimeout)
+	defer updateCancel()
+	_, _ = applyRelease(updateCtx, opts, rel, false)
+}
+
+// Update forces a release check and applies it when newer. Unlike Check, it
+// surfaces "already up to date", permission errors, and other failures.
+func Update(ctx context.Context, opts Options) (Result, error) {
+	if opts.CurrentVersion == "" || opts.CurrentVersion == "dev" {
+		return Result{}, errors.New("development builds (version dev) cannot self-update; install a released binary")
 	}
-	writeState(statePath)
+	opts = withDefaults(opts)
 
 	updateCtx, cancel := context.WithTimeout(ctx, updateTimeout)
 	defer cancel()
 
-	if err := update(updateCtx, opts); err != nil {
-		fmt.Fprintf(opts.Stderr, "nx: update check skipped: %v\n", err)
-	}
+	return applyUpdate(updateCtx, opts, true)
 }
 
-func update(ctx context.Context, opts Options) error {
+func withDefaults(opts Options) Options {
+	if opts.Repo == "" {
+		opts.Repo = "o1x3/nx"
+	}
+	if opts.Stdout == nil {
+		opts.Stdout = io.Discard
+	}
+	if opts.Stderr == nil {
+		opts.Stderr = io.Discard
+	}
+	return opts
+}
+
+func applyUpdate(ctx context.Context, opts Options, explicit bool) (Result, error) {
+	rel, err := latestRelease(ctx, opts.Repo)
+	if err != nil {
+		return Result{Current: opts.CurrentVersion}, err
+	}
+	return applyRelease(ctx, opts, rel, explicit)
+}
+
+func applyRelease(ctx context.Context, opts Options, rel release, explicit bool) (Result, error) {
+	result := Result{Current: opts.CurrentVersion, Latest: rel.TagName}
+
 	exe, err := os.Executable()
 	if err != nil {
-		return err
+		return result, err
 	}
 	if resolved, err := filepath.EvalSymlinks(exe); err == nil {
 		exe = resolved
 	}
 	targetDir := filepath.Dir(exe)
-	// Default installs land in root-owned dirs like /usr/local/bin. Skip
-	// quietly when we cannot write a replacement beside the current binary.
+	// Default installs land in root-owned dirs like /usr/local/bin. Background
+	// checks skip quietly; explicit update reports the problem.
 	if !canWriteDir(targetDir) {
-		return nil
+		if !explicit {
+			return result, nil
+		}
+		return result, fmt.Errorf("install directory is not writable: %s\nre-run the installer to migrate onto ~/.local/bin", targetDir)
 	}
 
-	rel, err := latestRelease(ctx, opts.Repo)
-	if err != nil {
-		return err
-	}
 	if !newer(rel.TagName, opts.CurrentVersion) {
-		return nil
+		if explicit {
+			fmt.Fprintf(opts.Stdout, "nx is up to date (%s)\n", strings.TrimPrefix(opts.CurrentVersion, "v"))
+		}
+		return result, nil
 	}
 
 	asset, ok := matchingAsset(rel.Assets)
 	if !ok {
-		return fmt.Errorf("no release asset for %s/%s", runtime.GOOS, runtime.GOARCH)
+		return result, fmt.Errorf("no release asset for %s/%s", runtime.GOOS, runtime.GOARCH)
 	}
 	checksums, ok := checksumAsset(rel.Assets)
 	if !ok {
-		return errors.New("release has no checksums.txt asset")
+		return result, errors.New("release has no checksums.txt asset")
 	}
 
 	archivePath, err := downloadFile(ctx, asset.URL, os.TempDir(), ".nx-archive-*")
 	if err != nil {
-		return err
+		return result, err
 	}
 	defer os.Remove(archivePath)
 
 	if err := verifyChecksum(ctx, checksums.URL, asset.Name, archivePath); err != nil {
-		return err
+		return result, err
 	}
 
 	next, err := extractBinary(archivePath, targetDir)
 	if err != nil {
-		return err
+		return result, err
 	}
 	defer os.Remove(next)
 
@@ -124,14 +165,20 @@ func update(ctx context.Context, opts Options) error {
 		mode = info.Mode()
 	}
 	if err := os.Chmod(next, mode); err != nil {
-		return err
+		return result, err
 	}
 	if err := os.Rename(next, exe); err != nil {
-		return fmt.Errorf("replace %s: %w", exe, err)
+		return result, fmt.Errorf("replace %s: %w", exe, err)
 	}
 
-	fmt.Fprintf(opts.Stderr, "nx: updated %s -> %s\n", opts.CurrentVersion, rel.TagName)
-	return nil
+	result.Updated = true
+	msg := fmt.Sprintf("nx: updated %s -> %s\n", opts.CurrentVersion, rel.TagName)
+	if explicit {
+		fmt.Fprint(opts.Stdout, msg)
+	} else {
+		fmt.Fprint(opts.Stderr, msg)
+	}
+	return result, nil
 }
 
 func canWriteDir(dir string) bool {
@@ -145,12 +192,15 @@ func canWriteDir(dir string) bool {
 	return true
 }
 
+// latestRelease resolves the newest tag via the public releases/latest redirect
+// on github.com (same approach as scripts/install.sh). Avoids api.github.com,
+// which rate-limits unauthenticated clients.
 func latestRelease(ctx context.Context, repo string) (release, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.github.com/repos/"+repo+"/releases/latest", nil)
+	latestURL := "https://github.com/" + repo + "/releases/latest"
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, latestURL, nil)
 	if err != nil {
 		return release{}, err
 	}
-	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("User-Agent", "nx")
 
 	resp, err := http.DefaultClient.Do(req)
@@ -158,36 +208,66 @@ func latestRelease(ctx context.Context, repo string) (release, error) {
 		return release{}, err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
 		return release{}, fmt.Errorf("GitHub returned %s", resp.Status)
 	}
 
-	var rel release
-	if err := json.NewDecoder(resp.Body).Decode(&rel); err != nil {
+	finalURL := latestURL
+	if resp.Request != nil && resp.Request.URL != nil {
+		finalURL = resp.Request.URL.String()
+	}
+	tag, err := tagFromReleaseURL(finalURL)
+	if err != nil {
 		return release{}, err
 	}
-	if rel.TagName == "" {
-		return release{}, errors.New("latest release has no tag")
+
+	osPart := strings.ToLower(runtime.GOOS)
+	archPart := strings.ToLower(runtime.GOARCH)
+	archiveName := "nx_" + osPart + "_" + archPart + ".tar.gz"
+	base := "https://github.com/" + repo + "/releases/download/" + tag
+	return release{
+		TagName: tag,
+		Assets: []asset{
+			{Name: archiveName, URL: base + "/" + archiveName},
+			{Name: "checksums.txt", URL: base + "/checksums.txt"},
+		},
+	}, nil
+}
+
+func tagFromReleaseURL(raw string) (string, error) {
+	const marker = "/releases/tag/"
+	idx := strings.Index(raw, marker)
+	if idx < 0 {
+		return "", fmt.Errorf("could not determine latest release from %s", raw)
 	}
-	return rel, nil
+	tag := raw[idx+len(marker):]
+	if cut := strings.IndexAny(tag, "/?#"); cut >= 0 {
+		tag = tag[:cut]
+	}
+	tag = strings.TrimSpace(tag)
+	if tag == "" {
+		return "", fmt.Errorf("could not determine latest release from %s", raw)
+	}
+	return tag, nil
 }
 
 func matchingAsset(assets []asset) (asset, bool) {
 	osPart := strings.ToLower(runtime.GOOS)
 	archPart := strings.ToLower(runtime.GOARCH)
-	for _, asset := range assets {
-		name := strings.ToLower(asset.Name)
+	for _, a := range assets {
+		name := strings.ToLower(a.Name)
 		if strings.Contains(name, osPart) && strings.Contains(name, archPart) && strings.HasSuffix(name, ".tar.gz") {
-			return asset, true
+			return a, true
 		}
 	}
 	return asset{}, false
 }
 
 func checksumAsset(assets []asset) (asset, bool) {
-	for _, asset := range assets {
-		if strings.EqualFold(asset.Name, "checksums.txt") {
-			return asset, true
+	for _, a := range assets {
+		if strings.EqualFold(a.Name, "checksums.txt") {
+			return a, true
 		}
 	}
 	return asset{}, false
@@ -326,32 +406,6 @@ func extractBinary(archivePath, targetDir string) (string, error) {
 	}
 
 	return "", errors.New("archive did not contain nx binary")
-}
-
-func stateFile() (string, error) {
-	dir, err := os.UserCacheDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(dir, "nx", "update.json"), nil
-}
-
-func recentlyChecked(path string) bool {
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return false
-	}
-	var s state
-	if err := json.Unmarshal(raw, &s); err != nil {
-		return false
-	}
-	return time.Since(s.LastChecked) < checkInterval
-}
-
-func writeState(path string) {
-	_ = os.MkdirAll(filepath.Dir(path), 0o755)
-	raw, _ := json.Marshal(state{LastChecked: time.Now()})
-	_ = os.WriteFile(path, raw, 0o644)
 }
 
 func newer(latest, current string) bool {
