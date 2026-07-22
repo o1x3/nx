@@ -119,20 +119,42 @@ func cursorCLIReadMeta(db *sql.DB) cursorCLIMeta {
 	return cursorCLIMeta{}
 }
 
-// cursorCLIText extracts the concatenated text of a message content value.
+// cursorCLIText extracts estimable text from a message content value.
+// Counts text, reasoning, and tool-call/result payloads so offline chars/4
+// estimates are less starved than text-only (still far below billed totals).
 func cursorCLIText(raw json.RawMessage) string {
 	var s string
 	if unmarshalJSON(raw, &s) == nil {
 		return s
 	}
 	var blocks []struct {
-		Type string `json:"type"`
-		Text string `json:"text"`
+		Type    string          `json:"type"`
+		Text    string          `json:"text"`
+		Name    string          `json:"name"`
+		Args    json.RawMessage `json:"args"`
+		Input   json.RawMessage `json:"input"`
+		Result  json.RawMessage `json:"result"`
+		Content json.RawMessage `json:"content"`
 	}
 	if unmarshalJSON(raw, &blocks) == nil {
 		var sb strings.Builder
 		for _, b := range blocks {
-			if b.Type == "text" {
+			switch strings.ToLower(b.Type) {
+			case "text", "reasoning", "redacted-reasoning", "thinking":
+				sb.WriteString(b.Text)
+			case "tool-call", "tool_call", "tool-use", "tool_use":
+				sb.WriteString(b.Name)
+				sb.Write(b.Args)
+				sb.Write(b.Input)
+			case "tool-result", "tool_result":
+				if len(b.Result) > 0 {
+					sb.Write(b.Result)
+				} else if len(b.Content) > 0 {
+					sb.WriteString(cursorCLIText(b.Content))
+				} else {
+					sb.WriteString(b.Text)
+				}
+			default:
 				sb.WriteString(b.Text)
 			}
 		}

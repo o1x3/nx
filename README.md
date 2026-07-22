@@ -85,15 +85,17 @@ Data sources:
 | Claude Code | `~/.claude/projects/**/*.jsonl` and `~/.config/claude/projects/**/*.jsonl` (incl. subagents) | real (final streaming chunk) |
 | Codex | `~/.codex/sessions/**` + `archived_sessions/` | real (`last_token_usage` / cumulative deltas) |
 | pi.dev | `~/.pi/agent/sessions/**/*.jsonl` | real |
-| Cursor (IDE + CLI) | `<config>/Cursor/User/globalStorage/state.vscdb` + `~/.cursor/chats/*/*/store.db` | bubble counts when present; else composer context meter; else ~4 bytes/token |
+| Cursor (IDE + CLI) | `<config>/Cursor/User/globalStorage/state.vscdb` + `~/.cursor/chats/*/*/store.db` | dashboard usage API when logged in (input/output/cache); else bubble/meter/chars÷4 |
 
-Overrides: `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `PI_AGENT_DIR` (comma-separated). Cursor local totals undercount the admin dashboard (cache and billed cumulatives are server-side). Cursor Auto resolves to the underlying local model when AgentKv / `usageData` records it; otherwise it stays "Auto". `<config>` is `~/Library/Application Support` on macOS and `~/.config` on Linux.
+Overrides: `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `PI_AGENT_DIR` (comma-separated). Cursor prefers billed totals from the Cursor dashboard (session JWT in `state.vscdb`); local-only mode undercounts because cache and cumulatives are server-side. Set `NX_TOKEN_CURSOR_LOCAL=1` to skip the dashboard. Cursor Auto resolves to the underlying local model when AgentKv / `usageData` records it; otherwise it stays "Auto". `<config>` is `~/Library/Application Support` on macOS and `~/.config` on Linux.
 
 Environment:
 
 - `NX_BACKGROUND=light|dark` overrides terminal background detection.
 - `NX_TRUECOLOR=1` forces 24-bit colour (useful for capture tools). Piped output is plain text.
 - `NX_TOKEN_NO_CACHE=1` bypasses the on-disk aggregate cache for `nx token` (useful when debugging or forcing a full re-scan).
+- `NX_TOKEN_CURSOR_LOCAL=1` forces local-only Cursor token counting (no dashboard API).
+- `NX_CURSOR_SESSION_TOKEN` / `CURSOR_SESSION_TOKEN` override the Cursor dashboard session JWT (or `sub::jwt`).
 - `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `PI_AGENT_DIR` override harness data roots.
 
 Exit codes: `0` ok · `2` bad arguments · `3` no usage for the selection (output modes only, so it composes in scripts and CI).

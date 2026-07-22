@@ -63,7 +63,7 @@ func writeStat(w io.Writer, path string) {
 
 // aggregateCacheVersion is prefixed onto fingerprints so parser semantic
 // changes (dedup, meters, discovery) invalidate stale ~/.cache/nx/token gobes.
-const aggregateCacheVersion = "3"
+const aggregateCacheVersion = "4"
 
 func loadCached(harness string, paths []string, load func() *Aggregate) *Aggregate {
 	if cacheDisabled() {

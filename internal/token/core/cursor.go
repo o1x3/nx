@@ -13,9 +13,11 @@ import (
 
 // The Cursor harness merges two on-disk sources into one aggregate: the IDE's
 // global-storage SQLite database (cursor.go) and the Cursor CLI's per-session
-// store.db files (cursorcli.go).
+// store.db files (cursorcli.go). When a Cursor session is available, the
+// dashboard usage API (cursordash.go) replaces local token ledgers with
+// billed input/output/cache counts (cursor-usage approach).
 //
-// Token priority (codeburn / tokenuse):
+// Local token priority when the dashboard is unavailable (codeburn / tokenuse):
 //  1. Non-zero per-bubble tokenCount (older builds) — authoritative per turn
 //  2. Else composerData.promptTokenBreakdown.totalUsedTokens || contextTokensUsed
 //     credited once per conversation (latest context-window snapshot)
@@ -29,12 +31,14 @@ import (
 //  5. Else "auto"
 //
 // Local figures undercount the Cursor admin dashboard (cache + cumulative
-// billed input are server-side only).
+// billed input are server-side only). Set NX_TOKEN_CURSOR_LOCAL=1 to skip
+// the dashboard enricher.
 
-// loadCursor loads Cursor usage from both the IDE and the CLI.
+// loadCursor loads Cursor usage from both the IDE and the CLI, then enriches
+// token totals from the Cursor dashboard when authenticated.
 func loadCursor() *Aggregate {
 	paths := cursorPaths()
-	return loadCached(Cursor, paths, func() *Aggregate {
+	a := loadCached(Cursor, paths, func() *Aggregate {
 		a := newAggregate(Cursor)
 		loadCursorIDE(a)
 		part := loadParts(cursorCLIPaths(), loadCursorCLIStore)
@@ -43,6 +47,8 @@ func loadCursor() *Aggregate {
 		}
 		return a
 	})
+	applyCursorDashboard(a)
+	return a
 }
 
 func cursorPaths() []string {
