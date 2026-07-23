@@ -63,6 +63,48 @@ func TestRenderCardModels(t *testing.T) {
 	}
 }
 
+// Cost and models bars size the name column to the longest visible label so
+// common Cursor ids (GPT-5.6-sol-high, Opus …thinking-high) stay intact.
+func TestModelNamesNotTruncated(t *testing.T) {
+	s := sampleSummary(TabCost)
+	s.Models = []core.ModelStat{
+		{ID: "gpt-5.6-sol-high", Name: "GPT-5.6-sol-high", Tokens: 4_000_000},
+		{ID: "claude-opus-4-7-thinking-high", Name: "Opus 4.7.thinking-high", Tokens: 2_000_000},
+		{ID: "claude-sonnet-4-5-thinking-high", Name: "Thinking 4.5.high", Tokens: 1_000_000},
+		{ID: "claude-sonnet-4", Name: "Sonnet 4", Tokens: 500_000},
+	}
+	s.Cost = core.EstimateCost(s.Models, s.InputTokens, s.OutputTokens, s.CacheReadTokens, s.CacheWriteTokens)
+
+	for _, tab := range []string{TabCost, TabModels} {
+		plain := ansi.ReplaceAllString(RenderCard(s, tab), "")
+		for _, name := range []string{"GPT-5.6-sol-high", "Opus 4.7.thinking-high", "Thinking 4.5.high", "Sonnet 4"} {
+			if !strings.Contains(plain, name) {
+				t.Errorf("%s truncated or dropped %q:\n%s", tab, name, plain)
+			}
+		}
+		if strings.Contains(plain, "…") {
+			t.Errorf("%s still ellipsizes a model name that fits:\n%s", tab, plain)
+		}
+		for i, l := range strings.Split(plain, "\n") {
+			if w := dispWidth(l); w > 80 {
+				t.Errorf("%s line %d width %d exceeds 80: %q", tab, i, w, l)
+			}
+		}
+	}
+}
+
+func TestFitNameWidth(t *testing.T) {
+	if got := fitNameWidth([]string{"Sonnet 4", "GPT-5.6-sol-high"}, 8, 40); got != len("GPT-5.6-sol-high") {
+		t.Errorf("fitNameWidth = %d, want %d", got, len("GPT-5.6-sol-high"))
+	}
+	if got := fitNameWidth([]string{"tiny"}, 8, 40); got != 8 {
+		t.Errorf("fitNameWidth min = %d, want 8", got)
+	}
+	if got := fitNameWidth([]string{strings.Repeat("x", 100)}, 8, 20); got != 20 {
+		t.Errorf("fitNameWidth max = %d, want 20", got)
+	}
+}
+
 // Every detail tab must render its heading and the active-view chip without
 // panicking on the sample summary.
 func TestRenderDetailTabs(t *testing.T) {

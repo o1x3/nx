@@ -312,18 +312,26 @@ func renderCost(th Theme, s core.Summary) string {
 			max = m.USD
 		}
 	}
-	const nameW, barW = 14, 30
+	const usdW, gapW, minBarW = 9, 2, 12 // amount + "  " + bar floor
 	shown := cb.Models
 	if len(shown) > 8 {
 		shown = shown[:8]
 	}
+	names := make([]string, 0, len(shown))
+	for _, m := range shown {
+		if m.USD > 0 {
+			names = append(names, m.Name)
+		}
+	}
+	nameW := fitNameWidth(names, 8, contentW-gapW-usdW-minBarW)
+	barW := contentW - nameW - gapW - usdW
 	for _, m := range shown {
 		if m.USD <= 0 {
 			continue
 		}
 		name := styled(value()).Bold(true).Render(padRight(truncate(m.Name, nameW), nameW))
 		bar := densityBarF(th, m.USD, max, barW)
-		rows = append(rows, name+bar+styled(label()).Render("  "+padLeft(core.FormatUSD(m.USD), 9)))
+		rows = append(rows, name+bar+styled(label()).Render("  "+padLeft(core.FormatUSD(m.USD), usdW)))
 	}
 	rows = append(rows, "")
 	if cb.CacheSavingUSD > 0 {
