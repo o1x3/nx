@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.1
+
+- Fixed `nx token` cost and models bars truncating model names: the name column now grows to fit the longest visible label (within the card width), so names like `GPT-5.6-sol-high` and `Opus 4.7.thinking-high` stay intact.
+
 ## 0.4.0
 
 - Cursor token totals now prefer the Cursor dashboard usage API (same approach as cursor-usage): read the local session JWT from `state.vscdb`, fetch billed input/output/cache events, and keep local sessions/messages for activity. Falls back to local bubble/meter/chars÷4 when offline or unauthenticated.

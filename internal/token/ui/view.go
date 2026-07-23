@@ -420,8 +420,13 @@ func renderModels(th Theme, s core.Summary) string {
 		total += m.Tokens
 	}
 
-	const nameW = 16
 	const metaW = 16 // "  " + 7 tokens + "  " + 5 pct
+	const minBarW = 12
+	names := make([]string, len(models))
+	for i, m := range models {
+		names[i] = m.Name
+	}
+	nameW := fitNameWidth(names, 8, contentW-metaW-minBarW)
 	barW := contentW - nameW - metaW
 	rows := []string{styled(th.Accent).Bold(true).Render("Token share by model"), ""}
 	for _, m := range models {
@@ -511,6 +516,24 @@ func truncate(s string, w int) string {
 		r = r[:len(r)-1]
 	}
 	return string(r) + "…"
+}
+
+// fitNameWidth picks a column width that fits every name when possible,
+// clamped to [minW, maxW]. Outliers longer than maxW still truncate.
+func fitNameWidth(names []string, minW, maxW int) int {
+	if maxW < minW {
+		minW = maxW
+	}
+	w := minW
+	for _, n := range names {
+		if nw := lipgloss.Width(n); nw > w {
+			w = nw
+		}
+	}
+	if w > maxW {
+		return maxW
+	}
+	return w
 }
 
 func padRight(s string, w int) string {
