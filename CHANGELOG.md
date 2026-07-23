@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.2
+
+- Hardened `nx token` cost/models bars so model names stay fully visible: shared column sizing prefers the label over the bar, keeps a gap before the bar (no name/bar collision on the longest row), and sizes the USD column from the widest amount.
+
 ## 0.4.1
 
 - Fixed `nx token` cost and models bars truncating model names: the name column now grows to fit the longest visible label (within the card width), so names like `GPT-5.6-sol-high` and `Opus 4.7.thinking-high` stay intact.

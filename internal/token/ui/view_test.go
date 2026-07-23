@@ -67,23 +67,45 @@ func TestRenderCardModels(t *testing.T) {
 // common Cursor ids (GPT-5.6-sol-high, Opus …thinking-high) stay intact.
 func TestModelNamesNotTruncated(t *testing.T) {
 	s := sampleSummary(TabCost)
+	// Roster mirrors the cost-tab screenshot that truncated at a fixed 14-cell
+	// name column (Thinking 4.5…, GPT-5.6-sol-h…, Opus 4.7.thin…).
 	s.Models = []core.ModelStat{
-		{ID: "gpt-5.6-sol-high", Name: "GPT-5.6-sol-high", Tokens: 4_000_000},
-		{ID: "claude-opus-4-7-thinking-high", Name: "Opus 4.7.thinking-high", Tokens: 2_000_000},
-		{ID: "claude-sonnet-4-5-thinking-high", Name: "Thinking 4.5.high", Tokens: 1_000_000},
-		{ID: "claude-sonnet-4", Name: "Sonnet 4", Tokens: 500_000},
+		{ID: "claude-sonnet-4-5-thinking-high", Name: "Thinking 4.5.high", Tokens: 2_000_000_000},
+		{ID: "claude-sonnet-4", Name: "Sonnet 4", Tokens: 480_000_000},
+		{ID: "gpt-5.6-sol-high", Name: "GPT-5.6-sol-high", Tokens: 430_000_000},
+		{ID: "claude-sonnet-4-5-thinking-xhigh", Name: "Thinking 4.5.xhigh", Tokens: 380_000_000},
+		{ID: "claude-sonnet-4-6-thinking-high", Name: "Thinking 4.6.high", Tokens: 310_000_000},
+		{ID: "claude-opus-4-7-thinking-high", Name: "Opus 4.7.thinking-high", Tokens: 180_000_000},
+		{ID: "claude-opus-4-8-thinking-high", Name: "Opus 4.8.thinking-high", Tokens: 147_000_000},
+		{ID: "claude-sonnet-4-6-thinking-xhigh", Name: "Thinking 4.6.xhigh", Tokens: 116_000_000},
 	}
+	s.InputTokens, s.OutputTokens = 95_900_000, 22_200_000
+	s.CacheReadTokens = 4_900_000_000
 	s.Cost = core.EstimateCost(s.Models, s.InputTokens, s.OutputTokens, s.CacheReadTokens, s.CacheWriteTokens)
 
+	wantNames := []string{
+		"Thinking 4.5.high", "Sonnet 4", "GPT-5.6-sol-high", "Thinking 4.5.xhigh",
+		"Thinking 4.6.high", "Opus 4.7.thinking-high", "Opus 4.8.thinking-high", "Thinking 4.6.xhigh",
+	}
 	for _, tab := range []string{TabCost, TabModels} {
 		plain := ansi.ReplaceAllString(RenderCard(s, tab), "")
-		for _, name := range []string{"GPT-5.6-sol-high", "Opus 4.7.thinking-high", "Thinking 4.5.high", "Sonnet 4"} {
+		for _, name := range wantNames {
 			if !strings.Contains(plain, name) {
 				t.Errorf("%s truncated or dropped %q:\n%s", tab, name, plain)
 			}
 		}
 		if strings.Contains(plain, "…") {
 			t.Errorf("%s still ellipsizes a model name that fits:\n%s", tab, plain)
+		}
+		// Longest label must not butt into the bar (regression: nameW==len with no gap).
+		if tab == TabCost {
+			for _, l := range strings.Split(plain, "\n") {
+				if strings.Contains(l, "Opus 4.7.thinking-high") && strings.Contains(l, "█") {
+					if !strings.Contains(l, "Opus 4.7.thinking-high ") {
+						t.Errorf("cost row missing gap after longest name: %q", l)
+					}
+				}
+			}
 		}
 		for i, l := range strings.Split(plain, "\n") {
 			if w := dispWidth(l); w > 80 {
@@ -102,6 +124,52 @@ func TestFitNameWidth(t *testing.T) {
 	}
 	if got := fitNameWidth([]string{strings.Repeat("x", 100)}, 8, 20); got != 20 {
 		t.Errorf("fitNameWidth max = %d, want 20", got)
+	}
+}
+
+func TestModelBarWidths(t *testing.T) {
+	names := []string{"Sonnet 4", "Opus 4.7.thinking-high"}
+	nameW, barW := modelBarWidths(names, 1+2+9, 8) // gapBeforeBar + gapBeforeAmt + usdW
+	if nameW != len("Opus 4.7.thinking-high") {
+		t.Errorf("nameW = %d, want %d", nameW, len("Opus 4.7.thinking-high"))
+	}
+	if nameW+1+barW+2+9 != contentW {
+		t.Errorf("columns %d+%d bar do not fill contentW=%d", nameW, barW, contentW)
+	}
+	// Pathologically long name: keep a bar floor and truncate the name.
+	long := []string{strings.Repeat("m", 80)}
+	nameW, barW = modelBarWidths(long, 12, 8)
+	if nameW+12+barW != contentW {
+		t.Errorf("long name columns %d+12+%d != contentW %d", nameW, barW, contentW)
+	}
+	if barW < 8 {
+		t.Errorf("barW = %d, want >= 8", barW)
+	}
+}
+
+// Overlong model names still truncate, but every rendered line stays within the
+// card width budget (CodeRabbit follow-up on the 0.4.1 sizing change).
+func TestModelNameOverlongStillBounded(t *testing.T) {
+	s := sampleSummary(TabCost)
+	long := strings.Repeat("VeryLongModelName", 6) // well past maxName
+	s.Models = []core.ModelStat{
+		{ID: "claude-opus-4-8", Name: long, Tokens: 1_000_000},
+		{ID: "gpt-5.4", Name: "GPT-5.4", Tokens: 100_000},
+	}
+	s.Cost = core.EstimateCost(s.Models, s.InputTokens, s.OutputTokens, s.CacheReadTokens, s.CacheWriteTokens)
+	for _, tab := range []string{TabCost, TabModels} {
+		plain := ansi.ReplaceAllString(RenderCard(s, tab), "")
+		if !strings.Contains(plain, "…") {
+			t.Errorf("%s should ellipsize an overlong name:\n%s", tab, plain)
+		}
+		if strings.Contains(plain, long) {
+			t.Errorf("%s leaked the full overlong name", tab)
+		}
+		for i, l := range strings.Split(plain, "\n") {
+			if w := dispWidth(l); w > 80 {
+				t.Errorf("%s line %d width %d exceeds 80: %q", tab, i, w, l)
+			}
+		}
 	}
 }
 
