@@ -421,13 +421,12 @@ func renderModels(th Theme, s core.Summary) string {
 	}
 
 	const metaW = 16 // "  " + 7 tokens + "  " + 5 pct
-	const minBarW = 12
+	const gapBeforeBar, minBarW = 1, 8
 	names := make([]string, len(models))
 	for i, m := range models {
 		names[i] = m.Name
 	}
-	nameW := fitNameWidth(names, 8, contentW-metaW-minBarW)
-	barW := contentW - nameW - metaW
+	nameW, barW := modelBarWidths(names, metaW+gapBeforeBar, minBarW)
 	rows := []string{styled(th.Accent).Bold(true).Render("Token share by model"), ""}
 	for _, m := range models {
 		name := styled(value()).Bold(true).Render(padRight(truncate(m.Name, nameW), nameW))
@@ -453,7 +452,7 @@ func renderModels(th Theme, s core.Summary) string {
 		meta := styled(label()).Render("  "+padLeft(truncate(core.FormatTokens(m.Tokens), 7), 7)+"  ") +
 			styled(muted()).Render(padLeft(pct, 5))
 
-		rows = append(rows, name+bar+meta)
+		rows = append(rows, name+strings.Repeat(" ", gapBeforeBar)+bar+meta)
 	}
 	return strings.Join(rows, "\n")
 }
@@ -534,6 +533,25 @@ func fitNameWidth(names []string, minW, maxW int) int {
 		return maxW
 	}
 	return w
+}
+
+// modelBarWidths sizes the name and bar columns for a model ranking row.
+// reserved is everything that is not name or bar (gaps + right-hand meta).
+// Names get first claim on the card width; the bar keeps at least minBarW.
+func modelBarWidths(names []string, reserved, minBarW int) (nameW, barW int) {
+	if minBarW < 0 {
+		minBarW = 0
+	}
+	maxName := contentW - reserved - minBarW
+	if maxName < 1 {
+		maxName = 1
+	}
+	nameW = fitNameWidth(names, 8, maxName)
+	barW = contentW - reserved - nameW
+	if barW < 0 {
+		barW = 0
+	}
+	return nameW, barW
 }
 
 func padRight(s string, w int) string {
