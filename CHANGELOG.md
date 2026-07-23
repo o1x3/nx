@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.3
+
+- Fixed `nx token` banner stats alignment: the key·value info column now spans to the card's right edge (same as cost amounts and the footer), so values right-align cleanly and long fav-model names keep a proper dotted leader.
+
 ## 0.4.2
 
 - Hardened `nx token` cost/models bars so model names stay fully visible: shared column sizing prefers the label over the bar, keeps a gap before the bar (no name/bar collision on the longest row), and sizes the USD column from the widest amount.
