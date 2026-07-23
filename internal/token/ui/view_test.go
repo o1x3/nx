@@ -307,6 +307,36 @@ func TestLogoArtUniformWidth(t *testing.T) {
 	}
 }
 
+// Banner key·value rows must share one right edge with the rest of the card
+// (header range chips, cost amounts, footer), not stop short in a narrow column.
+func TestBannerInfoColumnAlignsToContentWidth(t *testing.T) {
+	if logoW+bannerGap+infoW != contentW {
+		t.Fatalf("logoW(%d)+bannerGap(%d)+infoW(%d) = %d, want contentW=%d",
+			logoW, bannerGap, infoW, logoW+bannerGap+infoW, contentW)
+	}
+	rows := []struct{ key, val string }{
+		{"sessions", "239"},
+		{"messages", "16,458"},
+		{"tokens", "5.1B"},
+		{"active days", "17"},
+		{"streak", "3d / 11d"},
+		{"peak hour", "6 PM"},
+		{"fav model", "GPT-5.6-sol-high"},
+	}
+	for _, r := range rows {
+		got := dispWidth(leaderRow(r.key, r.val, infoW))
+		if got != infoW {
+			t.Errorf("leaderRow(%q, %q) width %d, want infoW=%d", r.key, r.val, got, infoW)
+		}
+	}
+	// Long fav-model labels still keep a visible leader (not a tiny ······ stub).
+	plain := ansi.ReplaceAllString(leaderRow("fav model", "GPT-5.6-sol-high", infoW), "")
+	dots := strings.Count(plain, "·")
+	if dots < 10 {
+		t.Errorf("fav model leader has only %d dots; info column looks cramped: %q", dots, plain)
+	}
+}
+
 // The card paints no background, so lines are intentionally ragged — but none
 // should exceed the terminal width budget (guards against wrapping / overflow).
 func TestRenderCardMaxWidth(t *testing.T) {

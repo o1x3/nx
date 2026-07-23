@@ -67,11 +67,13 @@ func TabTitle(tab string) string {
 }
 
 const (
-	contentW  = 72 // nominal width used only to right-align the range + footer
+	contentW  = 72 // nominal width used to right-align header, banner values, bars, footer
 	logoW     = 18 // neofetch logo column (every harness icon is exactly 18)
 	bannerGap = 3  // spaces between logo and info columns
-	infoW     = 33 // the key·value info column (values right-align here)
-	gutterW   = 4  // weekday gutter ("Mon ") on the contribution graph
+	// infoW fills the rest of contentW so banner values share the card's right edge
+	// with the range chips, cost amounts, and footer (logoW + bannerGap + infoW == contentW).
+	infoW   = contentW - logoW - bannerGap
+	gutterW = 4 // weekday gutter ("Mon ") on the contribution graph
 )
 
 // Per-harness icon art (6×18). Combined uses a designed nexus mark (no letters);
